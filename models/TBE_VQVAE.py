@@ -12,27 +12,33 @@ from utils import (compute_downsample_rate,
                         )
 
 from models.base_model import BaseModel, detach_the_unnecessary
-from supervised_FCN.example_pretrained_model_loading import load_pretrained_FCN
 
-import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import CosineAnnealingLR
 import wandb
 from experiments.representation_tests import test_model_representations
-from sklearn.decomposition import PCA
-from models.barlowtwins import BarlowTwins, Projector
 
-from umap import UMAP
+class TBE_VQVAE(BaseModel):
+    """
+    TBE_VQVAE: Two Branch Encoder - VQVAE
 
-class BTVQVAE(BaseModel):
-    #requires the augmented batches.
+    VQVAE with a two branch encoder structure. Incorporates an additional SSL objective for the encoder.
+    ---
+    input_length: length of the input signal
+    SSL_method: SSL method to use. Either Barlow Twins or VICReg is supported at this moment.
+    non_aug_test_data_loader: test data loader without augmentation. For representation testing.
+    non_aug_train_data_loader: train data loader without augmentation. For representation testing.
+    config: config dict
+    n_train_samples: number of training samples
+    """
     def __init__(self,
-                 input_length,
-                 non_aug_test_data_loader,
-                 non_aug_train_data_loader,
-                 config: dict,
-                 n_train_samples: int,
+                input_length,
+                SSL_method,
+                non_aug_test_data_loader,
+                non_aug_train_data_loader,
+                config: dict,
+                n_train_samples: int
                 ):
         super().__init__()
 
@@ -55,13 +61,9 @@ class BTVQVAE(BaseModel):
         #decoder
         self.decoder = VQVAEDecoder(dim, 2 * in_channels, downsampled_rate, config['decoder']['n_resnet_blocks'], config['decoder']['dropout_rate'])
 
-        #projector
-        projector = Projector(last_channels_enc=dim, proj_hid=config['barlow_twins']['proj_hid'], proj_out=config['barlow_twins']['proj_out'], 
-                              device=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
-        
-        #barlow twins loss function
-        self.BT_loss_func = BarlowTwins(projector, lambda_=0.005)
-        self.BT_loss_weighting = self.config['barlow_twins']['gamma']
+        #SSL objective
+        self.SSL_method = SSL_method
+        self.SSL_loss_weighting = config['TBE_VQVAE']['SSL_loss_weight']
 
         #save these for representation tests during training
         self.train_data_loader = non_aug_train_data_loader
@@ -82,43 +84,39 @@ class BTVQVAE(BaseModel):
         perplexity = 0.
 
         #--- forward view 1 ---
-        #STFT
         C = x_view1.shape[1]
-        u1 = time_to_timefreq(x_view1, self.n_fft, C)
+        u1 = time_to_timefreq(x_view1, self.n_fft, C) #STFT
 
         if not self.decoder.is_upsample_size_updated:
             self.decoder.register_upsample_size(torch.IntTensor(np.array(u1.shape[2:])))
 
-        #encode
-        z1 = self.encoder(u1)
-        #vector quantize
-        z_q1, indices1, vq_loss1, perp1 = quantize(z1, self.vq_model)
-        #use view 1 in case view 2 is None
-        use_view1 = True
+        z1 = self.encoder(u1) #Encode
+
+        z_q1, indices1, vq_loss1, perp1 = quantize(z1, self.vq_model) #Vector quantization
 
         if x_view2 is not None: #if training
             # --- forward view 2 ---
-            #STFT
-            u2 = time_to_timefreq(x_view2, self.n_fft, C)
-            #encode
-            z2 = self.encoder(u2)
-            #vector quantize
-            z_q2, indices2, vq_loss2, perp2 = quantize(z2, self.vq_model)
-
-            #calculate barlow twins loss
-            BT_loss = self.BT_loss_func(z1, z2)
+            u2 = time_to_timefreq(x_view2, self.n_fft, C) #STFT
             
-            use_view1 = np.random.rand() < 0.5
+            z2 = self.encoder(u2) #Encode
+            
+            z_q2, indices2, vq_loss2, perp2 = quantize(z2, self.vq_model) #vector quantization
+
+            # --- SSL loss ---
+            SSL_loss = self.SSL_method(z1, z2) #calculate the SSL loss given two encodings:
+            
+            use_view1 = np.random.rand() < 0.5 #randomly choose which view to use for reconstruction
         else:
-            BT_loss = torch.tensor(0.0)
+            SSL_loss = torch.tensor(0.0) #no SSL loss if validation step
+            use_view1 = True #reconstruct view 1
 
         
-        #reconstruct:
-        uhat = self.decoder(z_q1 if use_view1 else z_q2)
-        xhat = timefreq_to_time(uhat, self.n_fft, C, original_length=x_view1.size(2) if use_view1 else x_view2.size(2))
+        #--- Reconstruction ---:
+        uhat = self.decoder(z_q1 if use_view1 else z_q2) #Decode
+        xhat = timefreq_to_time(uhat, self.n_fft, C, original_length=x_view1.size(2) if use_view1 else x_view2.size(2)) #Inverse STFT
         target_x, target_u = (x_view1, u1) if use_view1 else (x_view2, u2)
 
-        #loss
+        #--- VQVAE loss ---
         recons_loss['time'] = F.mse_loss(target_x, xhat)
         recons_loss['timefreq'] = F.mse_loss(target_u, uhat)
 
@@ -149,20 +147,22 @@ class BTVQVAE(BaseModel):
             wandb.log({"Reconstruction": wandb.Image(plt)})
             plt.close()
             
-        return recons_loss, vq_loss, perplexity, BT_loss
+        return recons_loss, vq_loss, perplexity, SSL_loss
     
         
     def training_step(self, batch, batch_idx):
         x = batch
         #forward:
-        recons_loss, vq_loss, perplexity, BT_loss = self.forward(x)
+        recons_loss, vq_loss, perplexity, SSL_loss = self.forward(x)
 
         #calculate vqvae loss:
         vqvae_loss = recons_loss['time'] + recons_loss['timefreq'] + vq_loss['loss'] + recons_loss['perceptual'] 
 
+        #SSL loss weighting:
+        SSL_loss *= self.SSL_loss_weighting
+
         #total loss:
-        tot_BT_loss = self.BT_loss_weighting * BT_loss
-        loss = vqvae_loss + tot_BT_loss
+        loss = vqvae_loss + SSL_loss
 
         # lr scheduler
         sch = self.lr_schedulers()
@@ -181,7 +181,7 @@ class BTVQVAE(BaseModel):
 
                      'perceptual': recons_loss['perceptual'],
 
-                     'barlow_twins_loss': tot_BT_loss,
+                     self.SSL_method.name + 'loss': SSL_loss,
                      }
         
         wandb.log(loss_hist)

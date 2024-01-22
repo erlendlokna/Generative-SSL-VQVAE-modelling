@@ -14,15 +14,15 @@ import torch.nn.functional as F
 from scipy.interpolate import interp1d
 
 class Augmentations(object):
-    def __init__(self, AmpR_rate=0.1, slope_rate=0.01, n_fft=2048, phase_max_change=np.pi/4, jitter_std=0.1, **kwargs):
+    def __init__(self, config, **kwargs):
         """
         :param AmpR_rate: rate for the `random amplitude resize`.
         """
-        self.AmpR_rate = AmpR_rate
-        self.slope_rate = slope_rate
-        self.n_fft = n_fft  # Size of the FFT window
-        self.phase_max_change = phase_max_change  # Maximum phase change
-        self.jitter_std = jitter_std
+        self.AmpR_rate = config['TBE_VQVAE']['augmentations']['AmpR_rate']
+        self.slope_rate = config['TBE_VQVAE']['augmentations']['slope_rate']
+        self.jitter_std = config['TBE_VQVAE']['augmentations']['jitter_std']
+        self.n_fft = config['TBE_VQVAE']['augmentations']['n_fft']  # Size of the FFT window
+        self.phase_max_change = config['TBE_VQVAE']['augmentations']['jitter_std']  # Maximum phase change
 
     def amplitude_resize(self, *subx_views):
         """

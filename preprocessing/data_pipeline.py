@@ -21,7 +21,7 @@ def build_data_pipeline(batch_size, dataset_importer: UCRDatasetImporter, config
         else:
             raise ValueError
     else:
-        augs = Augmentations()
+        augs = Augmentations(config)
         # DataLoader
         if kind == 'train':
             train_dataset = AugUCRDataset("train", dataset_importer, augs, augmentations, n_pairs=n_pairs)

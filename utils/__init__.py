@@ -13,7 +13,7 @@ from sklearn import metrics
 import torch.nn.functional as F
 
 def get_root_dir():
-    return Path(__file__).parent.parent.parent
+    return Path(__file__).parent.parent
 
 def compute_downsample_rate(input_length: int,
                             n_fft: int,

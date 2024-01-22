@@ -4,7 +4,9 @@ from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.loggers import WandbLogger
 from torch.utils.data import DataLoader
 
-from models.BTVQVAE import BTVQVAE
+from models.TBE_VQVAE import TBE_VQVAE
+from models.SSL.barlowtwins import BarlowTwins
+from models.SSL.vicreg import VICReg
 
 from preprocessing.preprocess_ucr import UCRDatasetImporter
 from preprocessing.data_pipeline import build_data_pipeline
@@ -15,28 +17,34 @@ import torch
 
 torch.set_float32_matmul_precision('medium')
 
-def train_BTVQVAE(config: dict,
-                aug_train_data_loader: DataLoader,
-                train_data_loader: DataLoader,
-                test_data_loader: DataLoader,
-                do_validate: bool,
-                wandb_project_case_idx: str = '',
-                wandb_project_name="",
-                wandb_run_name=''):
+def train_TBE_VQVAE(
+        config: dict,
+        SSL_method,
+        aug_train_data_loader: DataLoader,
+        train_data_loader: DataLoader,
+        test_data_loader: DataLoader,
+        do_validate: bool,
+        wandb_project_case_idx: str = '',
+        wandb_project_name="",
+        wandb_run_name=''
+        ):
     """
     :param do_validate: if True, validation is conducted during training with a test dataset.
     """
+    #Wandb: Initialize a new run
     project_name =  wandb_project_name
 
     if wandb_project_case_idx != '':
         project_name += f'-{wandb_project_case_idx}'
     
+
     input_length = train_data_loader.dataset.X.shape[-1]
 
-    train_model = BTVQVAE(input_length, 
-                                    non_aug_test_data_loader=test_data_loader,
-                                    non_aug_train_data_loader=train_data_loader, 
-                                    config=config, n_train_samples=len(train_data_loader.dataset))
+    train_model = TBE_VQVAE(input_length, 
+                            SSL_method,
+                            non_aug_test_data_loader=test_data_loader,
+                            non_aug_train_data_loader=train_data_loader, 
+                            config=config, n_train_samples=len(train_data_loader.dataset))
 
     wandb_logger = WandbLogger(project=project_name, 
                                dir=f"RepL/{config['dataset']['dataset_name']}/BarlowTwinsVQVAE",
@@ -66,10 +74,11 @@ def train_BTVQVAE(config: dict,
 
     #print('saving the models...')
     
-    gamma = config['barlow_twins']['gamma']
-    save_model({f'barlow_{gamma}_encoder': train_model.encoder,
-                f'barlow_{gamma}_decoder': train_model.decoder,
-                f'barlow_vq_{gamma}_model': train_model.vq_model,
+    #gamma = config['barlow_twins']['gamma']
+    SSL_weigting = config['TBE_VQVAE']['SSL_weighting']
+    save_model({f'{SSL_method.name}_{SSL_weigting}_encoder': train_model.encoder,
+                f'{SSL_method.name}_{SSL_weigting}_decoder': train_model.decoder,
+                f'{SSL_method.name}_{SSL_weigting}_model': train_model.vq_model,
                 }, id=config['dataset']['dataset_name'])
     
     
@@ -83,9 +92,10 @@ if __name__ == "__main__":
     batch_size = config['dataset']['batch_sizes']['vqvae']
     train_data_loader_non_aug, test_data_loader= [build_data_pipeline(batch_size, dataset_importer, config, kind) for kind in ['train', 'test']]
 
-    augmentations = ['AmpR', 'slope', 'flip', 'STFT']
+    augmentations = config['TBE_VQVAE']['augmentations']['used_augmentations']
     train_data_loader_aug = build_data_pipeline(batch_size, dataset_importer, config, "train", augmentations)
 
-    train_BTVQVAE(config, aug_train_data_loader = train_data_loader_aug,
+    SSL_method = VICReg(config)
+    train_TBE_VQVAE(config, SSL_method, aug_train_data_loader = train_data_loader_aug,
                     train_data_loader=train_data_loader_non_aug,
                     test_data_loader=test_data_loader, do_validate=True)
