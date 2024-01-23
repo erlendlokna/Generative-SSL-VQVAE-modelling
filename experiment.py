@@ -1,3 +1,7 @@
+"""
+NB! This code is not updated to the latest version of the codebase.
+"""
+
 from preprocessing.preprocess_ucr import UCRDatasetImporter
 from preprocessing.data_pipeline import build_data_pipeline
 from utils import load_yaml_param_settings
@@ -6,7 +10,7 @@ import torch
 
 torch.set_float32_matmul_precision('medium')
 
-from train_BTVQVAE import train_BarlowVQVAE
+from train_TBE_VQVAE import train_BarlowVQVAE
 
 from train_VQVAE import train_VQVAE
 

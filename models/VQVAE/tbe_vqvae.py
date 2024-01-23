@@ -1,8 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from models.encoder_decoder import VQVAEEncoder, VQVAEDecoder
-from models.vq import VectorQuantize
+from models.VQVAE.encoder_decoder import VQVAEEncoder, VQVAEDecoder
+from models.VQVAE.vq import VectorQuantize
 
 from utils import (compute_downsample_rate,
                         encode_data,
@@ -69,22 +69,29 @@ class TBE_VQVAE(BaseModel):
         self.train_data_loader = non_aug_train_data_loader
         self.test_data_loader = non_aug_test_data_loader
 
-    def forward(self, batch, training=True):      
-        #logic in case validation step
-        if training:
-            subxs_pair, y = batch
-            x_view1, x_view2 = subxs_pair
-        else:
+    def forward(self, batch, training=True):
+        """
+        x1 --> u1 --> z1 --> z_q --> uhat --> xhat
+                         |
+                      SSL_Loss
+                         |
+        x2 --> E(u2) --> z2 
+        
+        """      
+
+        if training: (x_view1, x_view2), y = batch
+        else: 
             x_view1, y = batch
-            x_view2 = None
+            use_view1 = True
     
 
         recons_loss = {'time': 0., 'timefreq': 0., 'perceptual': 0.}
-        vq_losses = None
+        vq_loss = 0.
         perplexity = 0.
 
-        #--- forward view 1 ---
         C = x_view1.shape[1]
+
+        #--- Encode view 1 ---
         u1 = time_to_timefreq(x_view1, self.n_fft, C) #STFT
 
         if not self.decoder.is_upsample_size_updated:
@@ -92,36 +99,29 @@ class TBE_VQVAE(BaseModel):
 
         z1 = self.encoder(u1) #Encode
 
-        z_q1, indices1, vq_loss1, perp1 = quantize(z1, self.vq_model) #Vector quantization
-
-        if x_view2 is not None: #if training
-            # --- forward view 2 ---
+        if training:
+            # --- Encode view 2 ---
             u2 = time_to_timefreq(x_view2, self.n_fft, C) #STFT
             
             z2 = self.encoder(u2) #Encode
-            
-            z_q2, indices2, vq_loss2, perp2 = quantize(z2, self.vq_model) #vector quantization
-
             # --- SSL loss ---
             SSL_loss = self.SSL_method(z1, z2) #calculate the SSL loss given two encodings:
             
             use_view1 = np.random.rand() < 0.5 #randomly choose which view to use for reconstruction
         else:
             SSL_loss = torch.tensor(0.0) #no SSL loss if validation step
-            use_view1 = True #reconstruct view 1
 
-        
+        # --- Vector Quantization ---
+        z_q, indices, vq_loss, perplexity = quantize(z1, self.vq_model) if use_view1 else quantize(z2, self.vq_model) #Vector quantization
+
         #--- Reconstruction ---:
-        uhat = self.decoder(z_q1 if use_view1 else z_q2) #Decode
+        uhat = self.decoder(z_q) #Decode
         xhat = timefreq_to_time(uhat, self.n_fft, C, original_length=x_view1.size(2) if use_view1 else x_view2.size(2)) #Inverse STFT
         target_x, target_u = (x_view1, u1) if use_view1 else (x_view2, u2)
 
         #--- VQVAE loss ---
         recons_loss['time'] = F.mse_loss(target_x, xhat)
         recons_loss['timefreq'] = F.mse_loss(target_u, uhat)
-
-        vq_loss = vq_loss1 if use_view1 else vq_loss2
-        perplexity = perp1 if use_view1 else perp2
 
         # plot `x` and `xhat`
         r = np.random.uniform(0, 1)
@@ -158,11 +158,8 @@ class TBE_VQVAE(BaseModel):
         #calculate vqvae loss:
         vqvae_loss = recons_loss['time'] + recons_loss['timefreq'] + vq_loss['loss'] + recons_loss['perceptual'] 
 
-        #SSL loss weighting:
-        SSL_loss *= self.SSL_loss_weighting
-
         #total loss:
-        loss = vqvae_loss + SSL_loss
+        loss = vqvae_loss + SSL_loss * self.SSL_loss_weighting
 
         # lr scheduler
         sch = self.lr_schedulers()
@@ -181,7 +178,7 @@ class TBE_VQVAE(BaseModel):
 
                      'perceptual': recons_loss['perceptual'],
 
-                     self.SSL_method.name + 'loss': SSL_loss,
+                     self.SSL_method.name + 'loss': SSL_loss * self.SSL_loss_weighting,
                      }
         
         wandb.log(loss_hist)

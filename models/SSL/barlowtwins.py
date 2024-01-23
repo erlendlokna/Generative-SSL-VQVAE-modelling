@@ -33,7 +33,7 @@ class BarlowTwins(nn.Module):
         C = torch.mm(norm_z1.T, norm_z2) / batch_size
         return C
 
-    def barlow_twins_loss(self, norm_z1, norm_z2):
+    def loss_function(self, norm_z1, norm_z2):
         C = self.barlow_twins_cross_correlation_mat(norm_z1, norm_z2)
         
         # loss
@@ -49,10 +49,12 @@ class BarlowTwins(nn.Module):
         z1_projected_norm = self._batch_dim_wise_normalize_z(self.projector(z1))
         z2_projected_norm = self._batch_dim_wise_normalize_z(self.projector(z2))
 
-        loss = self.barlow_twins_loss(z1_projected_norm, z2_projected_norm) 
+        loss = self.loss_function(z1_projected_norm, z2_projected_norm) 
+        
+        D = z1_projected_norm.shape[1]; assert D == z2_projected_norm.shape[1]
 
         #scaling based on dimensionality of projector:
-        loss_scaled = loss / self.num_projected_features
+        loss_scaled = loss / D
 
         return loss_scaled
     

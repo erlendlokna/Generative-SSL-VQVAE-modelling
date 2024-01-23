@@ -68,6 +68,23 @@ vicreg:
     mu: 25       # var_loss
     nu: 1        # cov_loss
 
+MaskGIT:
+  choice_temperatures: # for masking
+    lf: 4
+    hf: 4
+  stochastic_sampling: 1  # from (Lee et al., 2022)
+  T: 10
+  prior_model:
+    hidden_dim: 256
+    n_layers: 4
+    heads: 2
+    ff_mult: 1
+    use_rmsnorm: True
+    p_unconditional: 0.2
+  ESS:
+    use: False
+    error_ratio_ma_rate: 0.3
+
 representations:
   test_stage1: True
   test_stage2: False

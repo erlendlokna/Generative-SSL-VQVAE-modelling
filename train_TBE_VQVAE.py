@@ -4,7 +4,7 @@ from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.loggers import WandbLogger
 from torch.utils.data import DataLoader
 
-from models.TBE_VQVAE import TBE_VQVAE
+from models.VQVAE.tbe_vqvae import TBE_VQVAE
 from models.SSL.barlowtwins import BarlowTwins
 from models.SSL.vicreg import VICReg
 
@@ -13,7 +13,6 @@ from preprocessing.data_pipeline import build_data_pipeline
 from utils import load_yaml_param_settings
 from utils import save_model
 import torch
-
 
 torch.set_float32_matmul_precision('medium')
 
@@ -29,7 +28,19 @@ def train_TBE_VQVAE(
         wandb_run_name=''
         ):
     """
-    :param do_validate: if True, validation is conducted during training with a test dataset.
+    Trainer for the two branch encoder (TBE) - VQVAE model. 
+    ---
+    Args:
+        config (dict): config dictionary
+        SSL_method (BarlowTwins or VICReg): SSL method to use
+        aug_train_data_loader (DataLoader): train data loader with augmentations
+        train_data_loader (DataLoader): train data loader without augmentations - for representation learning
+        test_data_loader (DataLoader): test data loader - for representation learning / validation
+        do_validate (bool): whether to validate during training
+        wandb_project_case_idx (str): additional string to identify the run
+        wandb_project_name (str): name of the wandb project
+        wandb_run_name (str): name of the wandb run
+   
     """
     #Wandb: Initialize a new run
     project_name =  wandb_project_name
@@ -96,6 +107,7 @@ if __name__ == "__main__":
     train_data_loader_aug = build_data_pipeline(batch_size, dataset_importer, config, "train", augmentations)
 
     SSL_method = VICReg(config)
+    #SSL_method = BarlowTwins(config)
     train_TBE_VQVAE(config, SSL_method, aug_train_data_loader = train_data_loader_aug,
                     train_data_loader=train_data_loader_non_aug,
                     test_data_loader=test_data_loader, do_validate=True)

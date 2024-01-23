@@ -25,7 +25,6 @@ def compute_cov_loss(z: Tensor) -> Tensor:
     cov_loss = (cov_z ** 2).sum() / D
     return cov_loss
 
-
 class VICReg(nn.Module):
     def __init__(self, config: dict, **kwargs):
         super().__init__()
