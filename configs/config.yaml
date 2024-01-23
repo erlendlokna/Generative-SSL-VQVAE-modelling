@@ -38,33 +38,31 @@ VQVAE:
   emb_dropout: 0.
   perceptual_loss_weight: 0
 
-TBE_VQVAE:
-#inherites parameters from VQVAE
-  SSL_method: 'vicreg' #'barlow_twins'
-  SSL_loss_weight: 1
+augmentations:
+  used_augmentations:
+    - 'jitter'
+    - 'AmpR'
+    - 'STFT'
+    - 'slope'
+    - 'jitter'
+    - 'flip'
+  AmpR_rate: 0.1
+  slope_rate: 0.01
+  jitter_std: 0.01
+  n_fft: 2048 #for STFT augmentation
 
-  augmentations:
-    used_augmentations:
-      - 'jitter'
-      - 'AmpR'
-      - 'STFT'
-      - 'slope'
-      - 'jitter'
-    AmpR_rate: 0.1
-    slope_rate: 0.01
-    jitter_std: 0.01
-    n_fft: 2048 #for STFT augmentation
+SSL:
+  method_choice: 'vicreg' #choices: "barlow_twins", 'vicreg'
+  weighting: 1
 
-barlow_twins:
-  proj_hid: 4096 #projector hidden layer size
-  proj_out: 4096 #projector output layer size
-  loss:
+  barlow_twins:
+    proj_hid: 4096 #projector hidden layer size
+    proj_out: 4096 #projector output layer size
     lambda: 0.005
 
-vicreg:
-  proj_hid: 4096 #projector hidden layer size
-  proj_out: 4096 #projector output layer size
-  loss:
+  vicreg:
+    proj_hid: 4096 #projector hidden layer size
+    proj_out: 4096 #projector output layer size
     lambda: 25   # sim_loss
     mu: 25       # var_loss
     nu: 1        # cov_loss

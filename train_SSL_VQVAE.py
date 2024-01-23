@@ -18,7 +18,6 @@ torch.set_float32_matmul_precision('medium')
 
 def train_SSL_VQVAE(
         config: dict,
-        SSL_method,
         aug_train_data_loader: DataLoader,
         train_data_loader: DataLoader,
         test_data_loader: DataLoader,
@@ -52,7 +51,6 @@ def train_SSL_VQVAE(
     input_length = train_data_loader.dataset.X.shape[-1]
 
     train_model = SSL_VQVAE(input_length, 
-                            SSL_method,
                             non_aug_test_data_loader=test_data_loader,
                             non_aug_train_data_loader=train_data_loader, 
                             config=config, n_train_samples=len(train_data_loader.dataset))
@@ -86,9 +84,10 @@ def train_SSL_VQVAE(
     
     #gamma = config['barlow_twins']['gamma']
     SSL_weigting = config['TBE_VQVAE']['SSL_weighting']
-    save_model({f'{SSL_method.name}_{SSL_weigting}_encoder': train_model.encoder,
-                f'{SSL_method.name}_{SSL_weigting}_decoder': train_model.decoder,
-                f'{SSL_method.name}_{SSL_weigting}_model': train_model.vq_model,
+    SSL_method = config['SSL_VQVAE']['SSL_method']
+    save_model({f'{SSL_method}_{SSL_weigting}_encoder': train_model.encoder,
+                f'{SSL_method}_{SSL_weigting}_decoder': train_model.decoder,
+                f'{SSL_method}_{SSL_weigting}_model': train_model.vq_model,
                 }, id=config['dataset']['dataset_name'])
     
     
@@ -102,11 +101,9 @@ if __name__ == "__main__":
     batch_size = config['dataset']['batch_sizes']['vqvae']
     train_data_loader_non_aug, test_data_loader= [build_data_pipeline(batch_size, dataset_importer, config, kind) for kind in ['train', 'test']]
 
-    augmentations = config['TBE_VQVAE']['augmentations']['used_augmentations']
-    train_data_loader_aug = build_data_pipeline(batch_size, dataset_importer, config, "train", augmentations)
+    train_data_loader_aug = build_data_pipeline(batch_size, dataset_importer, config, augment=True, kind="train")
 
-    SSL_method = BarlowTwins(config) if config['TBE_VQVAE']['SSL_method'] == 'barlow_twins' else VICReg(config)
     #SSL_method = BarlowTwins(config)
-    train_SSL_VQVAE(config, SSL_method, aug_train_data_loader = train_data_loader_aug,
+    train_SSL_VQVAE(config, aug_train_data_loader = train_data_loader_aug,
                     train_data_loader=train_data_loader_non_aug,
                     test_data_loader=test_data_loader, do_validate=True)

@@ -61,8 +61,9 @@ class SSL_VQVAE(BaseModel):
         self.decoder = VQVAEDecoder(dim, 2 * in_channels, downsampled_rate, config['decoder']['n_resnet_blocks'], config['decoder']['dropout_rate'])
 
         #latent SSL objective
-        self.SSL_method = BarlowTwins(config) if config['SSL_VQVAE']['SSL_method'] == 'barlow_twins' else VICReg(config) #can be modified in future
-        self.SSL_loss_weighting = config['SSL_VQVAE']['SSL_loss_weight']
+        SSL_method_choice = config['SSL']['method_choice']; assert SSL_method_choice in ['barlow_twins', 'vicreg'], f"SSL method {SSL_method_choice} not in choices ['barlow_twins', 'vicreg']"
+        self.SSL_method = BarlowTwins(config) if SSL_method_choice == 'barlow_twins' else VICReg(config) #can be modified in future
+        self.SSL_loss_weighting = config['SSL']['weighting']
 
         #save these for representation tests during training
         self.train_data_loader = non_aug_train_data_loader

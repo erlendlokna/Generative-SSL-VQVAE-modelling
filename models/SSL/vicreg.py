@@ -28,14 +28,12 @@ def compute_cov_loss(z: Tensor) -> Tensor:
 class VICReg(nn.Module):
     def __init__(self, config: dict, **kwargs):
         super().__init__()
-        self.config = config
+        self.SSL_config = config['SSL']['vicreg']
 
-        self.projector = Projector(last_channels_enc=config['encoder']['dim'], proj_hid=config['vicreg']['proj_hid'], proj_out=config['vicreg']['proj_out'], 
+        self.projector = Projector(proj_in=config['encoder']['dim'], proj_hid=self.SSL_config['proj_hid'], proj_out=self.SSL_config['proj_out'], 
                         device=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
         
-        self.projected_features = config['vicreg']['proj_out']
-
-        self.name = "VICR"
+        self.name = "vicreg"
 
     def forward(self, z1, z2):
         """
@@ -50,7 +48,7 @@ class VICReg(nn.Module):
         return loss
 
     def loss_function(self, z1: Tensor, z2: Tensor, loss_hist: dict = {}):
-        loss_params = self.config['vicreg']['loss']
+        loss_params = self.SSL_config
 
         sim_loss = compute_invariance_loss(z1, z2)
         var_loss = compute_var_loss(z1) + compute_var_loss(z2)

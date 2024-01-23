@@ -11,12 +11,11 @@ from models.SSL.projector import Projector
 class BarlowTwins(nn.Module):
     def __init__(self, config):
         super().__init__()
-        self.projector = Projector(last_channels_enc=config['encoder']['dim'], proj_hid=config['barlow_twins']['proj_hid'], proj_out=config['barlow_twins']['proj_out'], 
+        SSL_config = config['SSL']['barlow_twins']
+        self.projector = Projector(proj_in=config['encoder']['dim'], proj_hid=SSL_config['proj_hid'], proj_out=SSL_config['proj_out'], 
                         device=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
 
-        self.lambda_ = config['barlow_twins']['loss']['lambda']
-        self.num_projected_features = config['barlow_twins']['proj_out']
-
+        self.lambda_ = SSL_config['lambda']
         self.name = "BT"
 
     @staticmethod
