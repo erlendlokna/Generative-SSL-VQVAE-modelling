@@ -40,6 +40,7 @@ VQVAE:
 
 TBE_VQVAE:
 #inherites parameters from VQVAE
+  SSL_method: 'vicreg' #'barlow_twins'
   SSL_loss_weight: 1
 
   augmentations:
@@ -69,9 +70,8 @@ vicreg:
     nu: 1        # cov_loss
 
 MaskGIT:
-  choice_temperatures: # for masking
-    lf: 4
-    hf: 4
+  choice_temperatures: 4 # for masking
+
   stochastic_sampling: 1  # from (Lee et al., 2022)
   T: 10
   prior_model:

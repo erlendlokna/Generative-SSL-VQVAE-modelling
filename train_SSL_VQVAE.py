@@ -28,7 +28,7 @@ def train_SSL_VQVAE(
         wandb_run_name=''
         ):
     """
-    Trainer for the two branch encoder (TBE) - VQVAE model. 
+    Trainer for the SSL-VQVAE model. 
     ---
     Args:
         config (dict): config dictionary
@@ -80,7 +80,6 @@ def train_SSL_VQVAE(
     wandb.log({'n_trainable_params:': n_trainable_params})
 
     # test
-    print('closing...')
     wandb.finish()
 
     #print('saving the models...')
@@ -106,7 +105,7 @@ if __name__ == "__main__":
     augmentations = config['TBE_VQVAE']['augmentations']['used_augmentations']
     train_data_loader_aug = build_data_pipeline(batch_size, dataset_importer, config, "train", augmentations)
 
-    SSL_method = VICReg(config)
+    SSL_method = BarlowTwins(config) if config['TBE_VQVAE']['SSL_method'] == 'barlow_twins' else VICReg(config)
     #SSL_method = BarlowTwins(config)
     train_SSL_VQVAE(config, SSL_method, aug_train_data_loader = train_data_loader_aug,
                     train_data_loader=train_data_loader_non_aug,
