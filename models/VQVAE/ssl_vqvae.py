@@ -34,7 +34,6 @@ class SSL_VQVAE(BaseModel):
     """
     def __init__(self,
                 input_length,
-                SSL_method,
                 non_aug_test_data_loader,
                 non_aug_train_data_loader,
                 config: dict,
@@ -61,9 +60,9 @@ class SSL_VQVAE(BaseModel):
         #decoder
         self.decoder = VQVAEDecoder(dim, 2 * in_channels, downsampled_rate, config['decoder']['n_resnet_blocks'], config['decoder']['dropout_rate'])
 
-        #SSL objective
-        self.SSL_method = SSL_method
-        self.SSL_loss_weighting = config['TBE_VQVAE']['SSL_loss_weight']
+        #latent SSL objective
+        self.SSL_method = BarlowTwins(config) if config['SSL_VQVAE']['SSL_method'] == 'barlow_twins' else VICReg(config) #can be modified in future
+        self.SSL_loss_weighting = config['SSL_VQVAE']['SSL_loss_weight']
 
         #save these for representation tests during training
         self.train_data_loader = non_aug_train_data_loader
@@ -72,10 +71,10 @@ class SSL_VQVAE(BaseModel):
     def forward(self, batch, training=True):
         """
         x1 --> u1 --> z1 --> z_q --> uhat --> xhat
-                         |
-                      SSL_Loss
-                         |
-        x2 --> E(u2) --> z2 
+                      |
+                    SSL_Loss
+                      |
+        x2 --> u2 --> z2 
         
         """      
 

@@ -4,12 +4,12 @@ from torch import nn
 import torch.nn.functional as F
 
 class Projector(nn.Module):
-    def __init__(self, last_channels_enc, proj_hid, proj_out, device):
+    def __init__(self, proj_in, proj_hid, proj_out, device):
         super().__init__()
         self.device = device  # Store the device
 
         # define layers
-        self.linear1 = nn.Linear(last_channels_enc, proj_hid)
+        self.linear1 = nn.Linear(proj_in, proj_hid)
         self.nl1 = nn.BatchNorm1d(proj_hid)
         self.linear2 = nn.Linear(proj_hid, proj_hid)
         self.nl2 = nn.BatchNorm1d(proj_hid)
