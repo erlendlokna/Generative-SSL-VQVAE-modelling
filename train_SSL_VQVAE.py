@@ -4,7 +4,7 @@ from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.loggers import WandbLogger
 from torch.utils.data import DataLoader
 
-from models.VQVAE.tbe_vqvae import TBE_VQVAE
+from models.VQVAE.ssl_vqvae import SSL_VQVAE
 from models.SSL.barlowtwins import BarlowTwins
 from models.SSL.vicreg import VICReg
 
@@ -16,7 +16,7 @@ import torch
 
 torch.set_float32_matmul_precision('medium')
 
-def train_TBE_VQVAE(
+def train_SSL_VQVAE(
         config: dict,
         SSL_method,
         aug_train_data_loader: DataLoader,
@@ -51,7 +51,7 @@ def train_TBE_VQVAE(
 
     input_length = train_data_loader.dataset.X.shape[-1]
 
-    train_model = TBE_VQVAE(input_length, 
+    train_model = SSL_VQVAE(input_length, 
                             SSL_method,
                             non_aug_test_data_loader=test_data_loader,
                             non_aug_train_data_loader=train_data_loader, 
@@ -108,6 +108,6 @@ if __name__ == "__main__":
 
     SSL_method = VICReg(config)
     #SSL_method = BarlowTwins(config)
-    train_TBE_VQVAE(config, SSL_method, aug_train_data_loader = train_data_loader_aug,
+    train_SSL_VQVAE(config, SSL_method, aug_train_data_loader = train_data_loader_aug,
                     train_data_loader=train_data_loader_non_aug,
                     test_data_loader=test_data_loader, do_validate=True)

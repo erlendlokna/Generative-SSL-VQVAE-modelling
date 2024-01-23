@@ -1,8 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from models.encoder_decoder import VQVAEEncoder, VQVAEDecoder
-from models.vq import VectorQuantize
+from models.VQVAE.encoder_decoder import VQVAEEncoder, VQVAEDecoder
+from models.VQVAE.vq import VectorQuantize
 
 from utils import (compute_downsample_rate,
                        encode_data,

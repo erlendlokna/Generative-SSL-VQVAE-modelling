@@ -19,10 +19,8 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 import wandb
 from experiments.representation_tests import test_model_representations
 
-class TBE_VQVAE(BaseModel):
+class SSL_VQVAE(BaseModel):
     """
-    TBE_VQVAE: Two Branch Encoder - VQVAE
-
     VQVAE with a two branch encoder structure. Incorporates an additional SSL objective for the encoder.
     ---
     input_length: length of the input signal
