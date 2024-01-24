@@ -1,5 +1,5 @@
 dataset:
-  dataset_name: 'ECG5000'
+  dataset_name: 'CBF'
   in_channels: 1
   data_scaling: True
   batch_sizes:
@@ -15,7 +15,7 @@ trainer_params:
     - 0
   max_epochs:
     vqvae: 1500
-    barlowvqvae: 1500
+    ssl_vqvae: 1500
 
 encoder:
   dim: 64
@@ -52,7 +52,8 @@ augmentations:
   n_fft: 2048 #for STFT augmentation
 
 SSL:
-  method_choice: 'vicreg' #choices: "barlow_twins", 'vicreg'
+  method_choice: 'vicreg'
+  #method_choice: 'barlow_twins'
   weighting: 1
 
   barlow_twins:

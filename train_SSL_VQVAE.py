@@ -4,9 +4,7 @@ from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.loggers import WandbLogger
 from torch.utils.data import DataLoader
 
-from models.VQVAE.ssl_vqvae import SSL_VQVAE
-from models.SSL.barlowtwins import BarlowTwins
-from models.SSL.vicreg import VICReg
+from experiments.exp_ssl_vqvae import Exp_SSL_VQVAE
 
 from preprocessing.preprocess_ucr import UCRDatasetImporter
 from preprocessing.data_pipeline import build_data_pipeline
@@ -50,7 +48,7 @@ def train_SSL_VQVAE(
 
     input_length = train_data_loader.dataset.X.shape[-1]
 
-    train_model = SSL_VQVAE(input_length, 
+    train_model = Exp_SSL_VQVAE(input_length, 
                             non_aug_test_data_loader=test_data_loader,
                             non_aug_train_data_loader=train_data_loader, 
                             config=config, n_train_samples=len(train_data_loader.dataset))
@@ -62,7 +60,7 @@ def train_SSL_VQVAE(
     trainer = pl.Trainer(logger=wandb_logger,
                          enable_checkpointing=False,
                          callbacks=[LearningRateMonitor(logging_interval='epoch')],
-                         max_epochs=config['trainer_params']['max_epochs']['barlowvqvae'],
+                         max_epochs=config['trainer_params']['max_epochs']['ssl_vqvae'],
                          devices=config['trainer_params']['gpus'],
                          accelerator='gpu',
                          check_val_every_n_epoch=20)
@@ -83,8 +81,8 @@ def train_SSL_VQVAE(
     #print('saving the models...')
     
     #gamma = config['barlow_twins']['gamma']
-    SSL_weigting = config['TBE_VQVAE']['SSL_weighting']
-    SSL_method = config['SSL_VQVAE']['SSL_method']
+    SSL_weigting = config['SSL']['weighting']
+    SSL_method = config['SSL']['method_choice']
     save_model({f'{SSL_method}_{SSL_weigting}_encoder': train_model.encoder,
                 f'{SSL_method}_{SSL_weigting}_decoder': train_model.decoder,
                 f'{SSL_method}_{SSL_weigting}_model': train_model.vq_model,

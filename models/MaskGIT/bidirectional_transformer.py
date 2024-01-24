@@ -37,7 +37,6 @@ class BidirectionalTransformer(nn.Module):
                  num_tokens_l: int = None,
                  **kwargs):
         """
-        :param kind:
         :param num_tokens:
         :param codebook_sizes:
         :param embed_dim:

@@ -1,8 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from models.VQVAE.encoder_decoder import VQVAEEncoder, VQVAEDecoder
-from models.VQVAE.vq import VectorQuantize
+from models.EncoderDecoder.encoder_decoder import VQVAEEncoder, VQVAEDecoder
+from models.VQ.vq import VectorQuantize
 
 from utils import (compute_downsample_rate,
                        encode_data,
@@ -11,23 +11,20 @@ from utils import (compute_downsample_rate,
                         quantize,
                         freeze)
 
-from models.base_model import BaseModel, detach_the_unnecessary
+from experiments.exp_base import BaseModel, detach_the_unnecessary
 from supervised_FCN.example_pretrained_model_loading import load_pretrained_FCN
 
-import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
-from pathlib import Path
-import tempfile
+
 
 import wandb
-from experiments.representation_tests import test_model_representations
-from sklearn.decomposition import PCA
-import umap
+from experiments.exp_base import test_model_representations
 
-class VQVAE(BaseModel):
+
+class Exp_VQVAE(BaseModel):
     def __init__(self,
                  input_length,
                  test_data_loader,
@@ -216,7 +213,7 @@ class VQVAE(BaseModel):
                 )
                 tested = True
 
-            if self.current_epoch == self.config['trainer_params']['max_epochs']['barlowvqvae']-1 and tested == False:
+            if self.current_epoch == self.config['trainer_params']['max_epochs']['vqvae']-1 and tested == False:
                 wandb.log(test_model_representations(
                     encode_data(self.train_data_loader, self.encoder, self.config['VQVAE']['n_fft'], self.vq_model),
                     encode_data(self.test_data_loader, self.encoder, self.config['VQVAE']['n_fft'], self.vq_model))

@@ -1,8 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from models.VQVAE.encoder_decoder import VQVAEEncoder, VQVAEDecoder
-from models.VQVAE.vq import VectorQuantize
+from models.EncoderDecoder.encoder_decoder import VQVAEEncoder, VQVAEDecoder
+from models.VQ.vq import VectorQuantize
 from models.SSL.vicreg import VICReg
 from models.SSL.barlowtwins import BarlowTwins
 
@@ -13,15 +13,15 @@ from utils import (compute_downsample_rate,
                         quantize,
                         )
 
-from models.base_model import BaseModel, detach_the_unnecessary
+from experiments.exp_base import BaseModel, detach_the_unnecessary
 
 import torch
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import CosineAnnealingLR
 import wandb
-from experiments.representation_tests import test_model_representations
+from experiments.exp_base import test_model_representations
 
-class SSL_VQVAE(BaseModel):
+class Exp_SSL_VQVAE(BaseModel):
     """
     VQVAE with a two branch encoder structure. Incorporates an additional SSL objective for the encoder.
     ---
@@ -178,7 +178,7 @@ class SSL_VQVAE(BaseModel):
 
                      'perceptual': recons_loss['perceptual'],
 
-                     self.SSL_method.name + 'loss': SSL_loss * self.SSL_loss_weighting,
+                     self.SSL_method.name + '_loss': SSL_loss * self.SSL_loss_weighting,
                      }
         
         wandb.log(loss_hist)
@@ -257,7 +257,7 @@ class SSL_VQVAE(BaseModel):
                 )
                 tested = True
 
-            if self.current_epoch == self.config['trainer_params']['max_epochs']['barlowvqvae']-1 and tested == False:
+            if self.current_epoch == self.config['trainer_params']['max_epochs']['ssl_vqvae']-1 and tested == False:
                 wandb.log(test_model_representations(
                     encode_data(self.train_data_loader, self.encoder, self.config['VQVAE']['n_fft'], self.vq_model),
                     encode_data(self.test_data_loader, self.encoder, self.config['VQVAE']['n_fft'], self.vq_model))
