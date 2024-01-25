@@ -10,7 +10,7 @@ import torch
 
 torch.set_float32_matmul_precision('medium')
 
-from train_SSL_VQVAE import train_BarlowVQVAE
+from stage1_SSL import train_BarlowVQVAE
 
 from train_VQVAE import train_VQVAE
 

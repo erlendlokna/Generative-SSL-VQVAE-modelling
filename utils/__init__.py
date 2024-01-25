@@ -46,7 +46,7 @@ def timefreq_to_time(x, n_fft: int, C: int, original_length: int=None):
     x = torch.istft(x, n_fft, normalized=False, return_complex=False)
     x = rearrange(x, '(b c) l -> b c l', c=C)
 
-    if original_length is not None:
+    if original_length is not None: 
         # Check if the length matches the original signal length
         current_length = x.size(2)
         if current_length < original_length:
