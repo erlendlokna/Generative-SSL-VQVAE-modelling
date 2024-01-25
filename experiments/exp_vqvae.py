@@ -11,7 +11,7 @@ from utils import (compute_downsample_rate,
                         quantize,
                         freeze)
 
-from experiments.exp_base import BaseModel, detach_the_unnecessary
+from experiments.exp_base import ExpBase, detach_the_unnecessary
 from supervised_FCN.example_pretrained_model_loading import load_pretrained_FCN
 
 import torch
@@ -24,7 +24,7 @@ import wandb
 from experiments.exp_base import test_model_representations
 
 
-class Exp_VQVAE(BaseModel):
+class Exp_VQVAE(ExpBase):
     def __init__(self,
                  input_length,
                  test_data_loader,

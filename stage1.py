@@ -72,7 +72,7 @@ if __name__ == "__main__":
 
     # data pipeline
     dataset_importer = UCRDatasetImporter(**config['dataset'])
-    batch_size = config['dataset']['batch_sizes']['vqvae']
+    batch_size = config['dataset']['batch_sizes']['stage1']
     train_data_loader, test_data_loader = [build_data_pipeline(batch_size, dataset_importer, config, kind) for kind in ['train', 'test']]
 
     train_VQVAE(config, train_data_loader, test_data_loader, do_validate=True, wandb_project_name='Barlow-Twins-VQVAE')

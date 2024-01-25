@@ -6,15 +6,16 @@ import tempfile
 from typing import Union
 from collections import deque
 from torch import nn
-from torch import functional as F
+import torch.nn.functional as F
+
 import torch
 
 from einops import repeat, rearrange
 from typing import Callable
 
 from models.MaskGIT.bidirectional_transformer import BidirectionalTransformer
-from models.VQVAE.encoder_decoder import VQVAEEncoder, VQVAEDecoder
-from models.VQVAE.vq import VectorQuantize
+from models.EncoderDecoder.encoder_decoder import VQVAEEncoder, VQVAEDecoder
+from models.VQ.vq import VectorQuantize
 
 from utils import compute_downsample_rate, get_root_dir, freeze, timefreq_to_time, time_to_timefreq, quantize
 
@@ -27,7 +28,6 @@ class MaskGIT(nn.Module):
     """
 
     def __init__(self,
-                 dataset_name: str,
                  input_length: int,
                  choice_temperature: int,
                  stochastic_sampling: int,
@@ -48,7 +48,7 @@ class MaskGIT(nn.Module):
         dim = config['encoder']['dim']
         in_channels = config['dataset']['in_channels']
         downsampled_width = config['encoder']['downsampled_width']
-        self.n_fft = config['VQ-VAE']['n_fft']
+        self.n_fft = config['VQVAE']['n_fft']
         downsample_rate = compute_downsample_rate(input_length, self.n_fft, downsampled_width)
 
         self.encoder = VQVAEEncoder(dim, 2 * in_channels, downsample_rate, config['encoder']['n_resnet_blocks'])
@@ -57,9 +57,10 @@ class MaskGIT(nn.Module):
         
         # load trained models for encoder, decoder, and vq_models
         SSL_method = f"{config['SSL']['method_choice']}_{config['SSL']['weighting']}"
-        self.load(self.encoder, get_root_dir().joinpath('saved_models'), f'{SSL_method}_encoder-{dataset_name}.ckpt')
-        self.load(self.decoder, get_root_dir().joinpath('saved_models'), f'{SSL_method}_decoder-{dataset_name}.ckpt')
-        self.load(self.vq_model, get_root_dir().joinpath('saved_models'), f'{SSL_method}_vq_model-{dataset_name}.ckpt')
+        dataset_name = config['dataset']['dataset_name']
+        self.load(self.encoder, get_root_dir().joinpath('saved_models'), f'{SSL_method}_encoder-{dataset_name}.ckpt'); print("encoder loaded")
+        self.load(self.decoder, get_root_dir().joinpath('saved_models'), f'{SSL_method}_decoder-{dataset_name}.ckpt'); print("decoder loaded")
+        self.load(self.vq_model, get_root_dir().joinpath('saved_models'), f'{SSL_method}_vq_model-{dataset_name}.ckpt'); print("vq_model loaded")
         
         # freeze the models for encoder, decoder, and vq_model
         freeze(self.encoder)
@@ -87,7 +88,7 @@ class MaskGIT(nn.Module):
             config['VQVAE']['codebook']['dim'],
             **config['MaskGIT']['prior_model'],
             n_classes=n_classes,
-            pretrained_tok_emb_l=embed,
+            pretrained_tok_emb=embed,
         )
 
         # stochastic codebook sampling
@@ -98,6 +99,8 @@ class MaskGIT(nn.Module):
         model: instance
         path_to_saved_model_fname: path to the ckpt file (i.e., trained model)
         """
+        print(dirname)
+        print(fname)
         try:
             model.load_state_dict(torch.load(dirname.joinpath(fname)))
         except FileNotFoundError:
@@ -122,7 +125,7 @@ class MaskGIT(nn.Module):
         straight from [https://github.com/dome272/MaskGIT-pytorch/blob/main/transformer.py]
         """
         device = x.device
-        _, s = self.encode_to_z_q(x, self.encoder_l, self.vq_model)  # (b n)
+        _, s = self.encode_to_z_q(x, self.encoder, self.vq_model)  # (b n)
 
         # randomly sample `t`
         t = np.random.uniform(0, 1)
@@ -190,7 +193,7 @@ class MaskGIT(nn.Module):
         return masking
 
  
-    def sample_indices(self,
+    def sample_good(self,
                    s: torch.Tensor,
                    unknown_number_in_the_beginning,
                    class_condition: Union[torch.Tensor, None],
@@ -230,7 +233,7 @@ class MaskGIT(nn.Module):
         # use ESS (Enhanced Sampling Scheme)
         if self.config['MaskGIT']['ESS']['use']:
             t_star, s_star = self.critical_reverse_sampling(s, unknown_number_in_the_beginning, class_condition)
-            s = self.iterative_decoding_with_self_token_critic(t_star, s_star, #'LF',
+            s = self.iterative_decoding_with_self_token_critic(t_star, s_star,
                                                                  unknown_number_in_the_beginning, class_condition,
                                                                  guidance_scale, device)
 
@@ -243,15 +246,14 @@ class MaskGIT(nn.Module):
         :param num: number of samples
         :return: sampled token indices
         """
-        s = self.create_input_tokens_normal(num, self.num_tokens_l, self.mask_token_ids, device)  # (b n)
-        #s_h = self.create_input_tokens_normal(num, self.num_tokens_h, self.mask_token_ids['HF'], device)  # (b n)
+        s = self.create_input_tokens_normal(num, self.num_tokens, self.mask_token_ids, device)  # (b n)
 
         unknown_number_in_the_beginning = torch.sum(s == self.mask_token_ids, dim=-1)  # (b,)
 
         gamma = self.gamma_func(mode)
         class_condition = repeat(torch.Tensor([class_index]).int().to(device), 'i -> b i', b=num) if class_index != None else None  # (b 1)
 
-        s = self.sample_indices(s, unknown_number_in_the_beginning, class_condition, guidance_scale, gamma, device)
+        s = self.sample_good(s, unknown_number_in_the_beginning, class_condition, guidance_scale, gamma, device)
 
         return s
 

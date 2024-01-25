@@ -63,7 +63,7 @@ class VQVAEEncoder(nn.Module):
                  num_channels: int,
                  downsample_rate: int,
                  n_resnet_blocks: int,
-                 dropout_rate: float,
+                 dropout_rate: float = 0.0,
                  bn: bool = True,
                  **kwargs):
         
@@ -104,7 +104,7 @@ class VQVAEDecoder(nn.Module):
                  num_channels: int,
                  downsample_rate: int,
                  n_resnet_blocks: int,
-                 dropout_rate: float,
+                 dropout_rate: float = 0.0,
                  **kwargs):
         """
         :param d: hidden dimension size

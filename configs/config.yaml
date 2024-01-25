@@ -3,10 +3,11 @@ dataset:
   in_channels: 1
   data_scaling: True
   batch_sizes:
-    vqvae: 128
+    stage1: 128
+    stage2: 256
   num_workers: 16
 
-model_params:
+exp_params:
   LR: 0.001 #0.01
   weight_decay: 0.001 #0.00001
 
@@ -14,8 +15,9 @@ trainer_params:
   gpus:
     - 0
   max_epochs:
-    vqvae: 1500
-    ssl_vqvae: 1500
+    stage1: 2000
+    stage1_ssl: 2000
+    stage2: 10000
 
 encoder:
   dim: 64
@@ -51,6 +53,10 @@ augmentations:
   jitter_std: 0.01
   n_fft: 2048 #for STFT augmentation
 
+representations:
+  test_stage1: True
+  test_stage2: False
+
 SSL:
   method_choice: 'vicreg'
   #method_choice: 'barlow_twins'
@@ -69,7 +75,7 @@ SSL:
     nu: 1        # cov_loss
 
 MaskGIT:
-  choice_temperatures: 4 # for masking
+  choice_temperature: 4 # for masking
 
   stochastic_sampling: 1  # from (Lee et al., 2022)
   T: 10
@@ -84,6 +90,6 @@ MaskGIT:
     use: False
     error_ratio_ma_rate: 0.3
 
-representations:
-  test_stage1: True
-  test_stage2: False
+class_guidance:
+  guidance_scale: 1.
+

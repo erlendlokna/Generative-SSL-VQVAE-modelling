@@ -34,7 +34,6 @@ class BidirectionalTransformer(nn.Module):
                  n_classes: int,
                  pretrained_tok_emb: nn.Parameter = None,
                  freeze_pretrained_tokens: bool = False,
-                 num_tokens_l: int = None,
                  **kwargs):
         """
         :param num_tokens:
@@ -49,7 +48,7 @@ class BidirectionalTransformer(nn.Module):
         :param n_classes:
         :param pretrained_tok_emb: if given, the embedding of the transformer is initialized with the pretrained embedding from stage 1
         :param freeze_pretrained_tokens:
-        :param num_tokens_l:
+        :param num_tokens:
         :param kwargs:
         """
         super().__init__()
@@ -103,7 +102,7 @@ class BidirectionalTransformer(nn.Module):
     def forward(self, embed_ind, class_condition: Union[None, torch.Tensor] = None):
         device = embed_ind.device
 
-        token_embeddings = self.tok_emb_l(embed_ind)  # (b n dim)
+        token_embeddings = self.tok_emb(embed_ind)  # (b n dim)
         cls_emb = self.class_embedding(class_condition, embed_ind.shape[0], device)  # (b 1 dim)
 
         n = token_embeddings.shape[1]
@@ -113,6 +112,6 @@ class BidirectionalTransformer(nn.Module):
         embed = self.blocks(embed)  # (b, 1+n, dim)
         embed = self.Token_Prediction(embed)[:, 1:, :]  # (b, n, dim)
 
-        logits = torch.matmul(embed, self.tok_emb_l.weight.T) + self.bias  # (b, n, codebook_size+1)
+        logits = torch.matmul(embed, self.tok_emb.weight.T) + self.bias  # (b, n, codebook_size+1)
         logits = logits[:, :, :-1]  # remove the logit for the mask token.  # (b, n, codebook_size)
         return logits

@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 import numpy as np
 
-class BaseModel(pl.LightningModule):
+class ExpBase(pl.LightningModule):
     def __init__(self):
         super().__init__()
     

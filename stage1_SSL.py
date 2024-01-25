@@ -21,7 +21,6 @@ def train_SSL_VQVAE(
         test_data_loader: DataLoader,
         do_validate: bool,
         wandb_project_case_idx: str = '',
-        wandb_project_name="",
         wandb_run_name=''
         ):
     """
@@ -40,7 +39,7 @@ def train_SSL_VQVAE(
    
     """
     #Wandb: Initialize a new run
-    project_name =  wandb_project_name
+    project_name =  'SSL_VQVAE-stage1'
 
     if wandb_project_case_idx != '':
         project_name += f'-{wandb_project_case_idx}'
@@ -85,7 +84,7 @@ def train_SSL_VQVAE(
     SSL_method = config['SSL']['method_choice']
     save_model({f'{SSL_method}_{SSL_weigting}_encoder': train_model.encoder,
                 f'{SSL_method}_{SSL_weigting}_decoder': train_model.decoder,
-                f'{SSL_method}_{SSL_weigting}_model': train_model.vq_model,
+                f'{SSL_method}_{SSL_weigting}_vq_model': train_model.vq_model,
                 }, id=config['dataset']['dataset_name'])
     
     
@@ -96,7 +95,7 @@ if __name__ == "__main__":
 
     # data pipeline
     dataset_importer = UCRDatasetImporter(**config['dataset'])
-    batch_size = config['dataset']['batch_sizes']['vqvae']
+    batch_size = config['dataset']['batch_sizes']['stage1']
     train_data_loader_non_aug, test_data_loader= [build_data_pipeline(batch_size, dataset_importer, config, kind) for kind in ['train', 'test']]
 
     train_data_loader_aug = build_data_pipeline(batch_size, dataset_importer, config, augment=True, kind="train")

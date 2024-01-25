@@ -13,15 +13,15 @@ from utils import (compute_downsample_rate,
                         quantize,
                         )
 
-from experiments.exp_base import BaseModel, detach_the_unnecessary
+from experiments.exp_base import ExpBase, detach_the_unnecessary, test_model_representations
+
 
 import torch
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import CosineAnnealingLR
 import wandb
-from experiments.exp_base import test_model_representations
 
-class Exp_SSL_VQVAE(BaseModel):
+class Exp_SSL_VQVAE(ExpBase):
     """
     VQVAE with a two branch encoder structure. Incorporates an additional SSL objective for the encoder.
     ---
