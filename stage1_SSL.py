@@ -59,7 +59,7 @@ def train_SSL_VQVAE(
     trainer = pl.Trainer(logger=wandb_logger,
                          enable_checkpointing=False,
                          callbacks=[LearningRateMonitor(logging_interval='epoch')],
-                         max_epochs=config['trainer_params']['max_epochs']['ssl_vqvae'],
+                         max_epochs=config['trainer_params']['max_epochs']['stage1_ssl'],
                          devices=config['trainer_params']['gpus'],
                          accelerator='gpu',
                          check_val_every_n_epoch=20)

@@ -1,5 +1,5 @@
 dataset:
-  dataset_name: 'UWaveGestureLibraryAll'
+  dataset_name: 'ECG5000'
   in_channels: 1
   data_scaling: True
   batch_sizes:
@@ -54,12 +54,12 @@ augmentations:
   n_fft: 2048 #for STFT augmentation
 
 representations:
-  test_stage1: True
+  test_stage1: False
   test_stage2: False
 
 SSL:
-  method_choice: 'vicreg'
-  #method_choice: 'barlow_twins'
+  #method_choice: 'vicreg'
+  method_choice: 'barlow_twins'
   weighting: 1
 
   barlow_twins:

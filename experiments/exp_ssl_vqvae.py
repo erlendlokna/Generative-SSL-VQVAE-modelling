@@ -42,7 +42,7 @@ class Exp_SSL_VQVAE(ExpBase):
         super().__init__()
 
         self.config = config
-        self.T_max = config['trainer_params']['max_epochs']['vqvae'] * (np.ceil(n_train_samples / config['dataset']['batch_sizes']['vqvae']) + 1)
+        self.T_max = config['trainer_params']['max_epochs']['stage1'] * (np.ceil(n_train_samples / config['dataset']['batch_sizes']['stage1']) + 1)
         
         self.n_fft = config['VQVAE']['n_fft']
         dim = config['encoder']['dim']
@@ -76,7 +76,6 @@ class Exp_SSL_VQVAE(ExpBase):
                     SSL_Loss
                       |
         x2 --> u2 --> z2 
-        
         """      
 
         if training: (x_view1, x_view2), y = batch
@@ -84,7 +83,6 @@ class Exp_SSL_VQVAE(ExpBase):
             x_view1, y = batch
             use_view1 = True
     
-
         recons_loss = {'time': 0., 'timefreq': 0., 'perceptual': 0.}
         vq_loss = 0.
         perplexity = 0.
@@ -214,11 +212,11 @@ class Exp_SSL_VQVAE(ExpBase):
 
 
     def configure_optimizers(self):
-        opt = torch.optim.AdamW([{'params': self.encoder.parameters(), 'lr': self.config['model_params']['LR']},
-                                 {'params': self.decoder.parameters(), 'lr': self.config['model_params']['LR']},
-                                 {'params': self.vq_model.parameters(), 'lr': self.config['model_params']['LR']},
+        opt = torch.optim.AdamW([{'params': self.encoder.parameters(), 'lr': self.config['exp_params']['LR']},
+                                 {'params': self.decoder.parameters(), 'lr': self.config['exp_params']['LR']},
+                                 {'params': self.vq_model.parameters(), 'lr': self.config['exp_params']['LR']},
                                  ],
-                                weight_decay=self.config['model_params']['weight_decay'])
+                                weight_decay=self.config['exp_params']['weight_decay'])
         
         return {'optimizer': opt, 'lr_scheduler': CosineAnnealingLR(opt, self.T_max)}
 

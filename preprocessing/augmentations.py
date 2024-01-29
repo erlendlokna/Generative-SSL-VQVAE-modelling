@@ -23,6 +23,7 @@ class Augmentations(object):
         self.jitter_std = jitter_std
         self.n_fft = n_fft  # Size of the FFT window
         self.phase_max_change = np.pi/4  # Maximum phase change
+        
 
     def amplitude_resize(self, *subx_views):
         """
