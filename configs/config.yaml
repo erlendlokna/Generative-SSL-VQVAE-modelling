@@ -41,17 +41,35 @@ VQVAE:
   perceptual_loss_weight: 0
 
 augmentations:
-  used_augmentations:
+  time_augs:
     - 'jitter'
     - 'AmpR'
-    - 'STFT'
     - 'slope'
-    - 'jitter'
     - 'flip'
-  AmpR_rate: 0.1
-  slope_rate: 0.01
-  jitter_std: 0.01
-  n_fft: 2048 #for STFT augmentation
+  time_frequency_augs:
+    - 'random_masking'
+    - 'block'
+    - 'band'
+    - 'phase'
+    - 'rotation'
+    - 'gaussian'
+  
+  aug_params:
+    n_fft: 16
+    jitter_std: 0.01
+    AmpR_rate: 0.1
+    slope_rate: 0.01
+    block_size_scale: 0.1
+    block_density: 0.1
+    num_bands_to_remove: 3
+    band_scale_factor: 0.1
+    gaus_mean: 0
+    gaus_std: 0.01
+    rotation_max_angle: 0.1
+    min_scale: 0.5
+    max_scale: 1.5
+    random_mask_density: 0.2
+
 
 representations:
   test_stage1: False

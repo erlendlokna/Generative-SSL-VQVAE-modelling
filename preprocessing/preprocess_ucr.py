@@ -4,7 +4,7 @@ from torch.utils.data import Dataset
 from sklearn.preprocessing import LabelEncoder
 import math
 from utils import get_root_dir, download_ucr_datasets
-from preprocessing.augmentations import Augmentations
+from preprocessing.augmentations import TimeFreqAugmentation
 import tarfile
 import os
 
@@ -91,8 +91,7 @@ class AugUCRDataset(Dataset):
     def __init__(self,
                 kind: str,
                 dataset_importer: UCRDatasetImporter,
-                augs: Augmentations,
-                used_augmentations: list,
+                timefreq_augs: TimeFreqAugmentation,
                 n_pairs: int,
                 **kwargs):
         """
@@ -104,8 +103,8 @@ class AugUCRDataset(Dataset):
         """
         super().__init__()
         self.kind = kind
-        self.augs = augs
-        self.used_augmentations = used_augmentations if kind == "train" else []
+        self.augment = (kind == "train")
+        self.timefreq_augs = timefreq_augs
         self.n_pairs = n_pairs
 
         if kind == "train":
@@ -133,8 +132,8 @@ class AugUCRDataset(Dataset):
         x, y = self.X[idx, :], self.Y[idx, :]
         x = x.reshape(1, -1)  # (1 x F)
 
-        subx_view1 = self.apply_augmentations(x)
-        subx_view2 = self.apply_augmentations(x)
+        subx_view1 = self.timefreq_augs.augment(x) if self.augment else x
+        subx_view2 = self.timefreq_augs.augment(x) if self.augment else x
         subx_view1, subx_view2 = self._assign_float32(subx_view1, subx_view2)
 
         return [subx_view1, subx_view2], y
@@ -160,6 +159,7 @@ class AugUCRDataset(Dataset):
             subx_view = self.augs.time_slicing(subx_view, expected_length=x.shape[-1])
         
         # The output of stft_augmentation is already a numpy array, so no need to convert again
+        
         return subx_view
     
     

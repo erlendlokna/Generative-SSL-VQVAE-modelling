@@ -1,29 +1,23 @@
 import numpy as np
-from scipy import interpolate
-import librosa
-import scipy
-from scipy.signal import find_peaks
-from utils import time_to_timefreq, timefreq_to_time
-import torch
-from torch.distributions import uniform
 
 import torch
-import torchaudio
-import torchaudio.transforms as T
-import torch.nn.functional as F
-from scipy.interpolate import interp1d
+import random 
+from scipy.ndimage import rotate
 
-class Augmentations(object):
-    def __init__(self, AmpR_rate, slope_rate, jitter_std, n_fft, **kwargs):
+
+class TimeAugmentations(object):
+    def __init__(self, AmpR_rate, slope_rate, jitter_std,  **kwargs):
         """
         :param AmpR_rate: rate for the `random amplitude resize`.
         """
         self.AmpR_rate = AmpR_rate
         self.slope_rate = slope_rate
-        self.jitter_std = jitter_std
-        self.n_fft = n_fft  # Size of the FFT window
-        self.phase_max_change = np.pi/4  # Maximum phase change
-        
+        self.jitter_std = jitter_std  
+
+    def update_parameters(self, **kwargs):
+        for key, value in kwargs.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
 
     def amplitude_resize(self, *subx_views):
         """
@@ -66,43 +60,6 @@ class Augmentations(object):
             sloped_subx_views = sloped_subx_views[0]
         return sloped_subx_views
     
-    def stft_augmentation(self, *subx_views):
-        """
-        Apply STFT augmentation to the input sequences using PyTorch's STFT.
-        """
-        augmented_subx_views = []
-        for subx in subx_views:
-            n_channels, subseq_len = subx.shape
-            augmented_subx = torch.zeros((n_channels, subseq_len))
-
-            for i in range(n_channels):
-                subx_tensor = torch.tensor(subx[i], dtype=torch.float32)
-
-                n_fft = 2 ** int(np.ceil(np.log2(len(subx_tensor))))
-
-                # Compute the STFT of the original data
-                stft = torch.stft(subx_tensor, n_fft=n_fft, return_complex=True, onesided=False)
-
-                # Modify the phase of the STFT representation while controlling phase changes
-                magnitude = torch.abs(stft)
-                phase = torch.angle(stft)
-                phase_change = torch.empty_like(phase).uniform_(-self.phase_max_change, self.phase_max_change)
-                augmented_phase = phase + phase_change
-
-                # Reconstruct the augmented STFT
-                augmented_stft = magnitude * torch.exp(1j * augmented_phase)
-
-                # Inverse STFT to get the augmented signal
-                augmented_signal = torch.istft(augmented_stft, n_fft = n_fft, return_complex=False, length=subseq_len, onesided=False)
-
-                augmented_subx[i] = augmented_signal
-
-            augmented_subx_views.append(augmented_subx)
-
-        if len(augmented_subx_views) == 1:
-            augmented_subx_views = augmented_subx_views[0]
-
-        return np.array(augmented_subx_views)
     
     def jitter(self, *subx_views):
         """
@@ -118,42 +75,284 @@ class Augmentations(object):
             jittered_subx_views = jittered_subx_views[0]
         return jittered_subx_views
     
-    def time_slicing(self, *subx_views, slice_rate=0.2, p=0.3, expected_length=None):
-        """
-        Perform window slicing on the input sequences and pad to match expected length.
-        :param subx_views: tuple of arrays, each of shape (n_channels, subseq_len)
-        :param slice_rate: fraction of the sequence length to be used as the window size for slicing
-        :param p: probability of applying time slicing
-        :param expected_length: the expected sequence length for padding
-        """
 
-        sliced_subx_views = []
-        for subx in subx_views:
-            # Apply slicing only with probability p
-            if np.random.rand() < p:
-                n_channels, subseq_len = subx.shape
-                window_size = int(subseq_len * slice_rate)
-                
-                # Randomly choose a start point for the slice
-                start_point = np.random.randint(0, subseq_len - window_size + 1)
-                end_point = start_point + window_size
-                
-                # Slice the sequence
-                sliced_subx = subx[:, start_point:end_point]
+class TimeFreqAugmentation(object):
+    def __init__(self, n_fft=16, mask_density=0.2, rotation_max_angle=10.0,
+                 min_scale=0.8, max_scale=1.2, block_size_scale=0.1,
+                 block_density=0.2, gaus_mean=0, gaus_std=0.01,
+                 num_bands_to_remove=1, band_scale_factor=0.1,
+                 phase_max_change=np.pi/4, **kwargs):
+        
+        self.n_fft = n_fft
+        self.mask_density = mask_density
+        self.rotation_max_angle = rotation_max_angle
+        self.min_scale = min_scale
+        self.max_scale = max_scale
+        self.block_size_scale = block_size_scale
+        self.block_density = block_density
+        self.gaus_mean = gaus_mean
+        self.gaus_std = gaus_std
+        self.num_bands_to_remove = num_bands_to_remove
+        self.band_scale_factor = band_scale_factor
+        self.phase_max_change = phase_max_change
 
-                # If an expected length is provided, pad the sequence
-                if expected_length is not None and window_size < expected_length:
-                    padding = expected_length - window_size
-                    # Here we use zero padding, but other strategies could be implemented
-                    sliced_subx = np.pad(sliced_subx, ((0, 0), (0, padding)), 'constant', constant_values=0)
-                
-                sliced_subx_views.append(sliced_subx)
-            else:
-                # If not applying augmentation, just append the original sequence
-                sliced_subx_views.append(subx)
+    def stft(self, x):
+        if not isinstance(x, torch.Tensor):
+            x = torch.tensor(x, dtype=torch.float32)
+        return torch.stft(x, n_fft=self.n_fft, return_complex=True, onesided=False)
+
+    def istft(self, u, original_length):
+        if not isinstance(u, torch.Tensor):
+            u = torch.tensor(u, dtype=torch.float32)
         
-        # If there was only one sequence, don't return a list
-        if len(sliced_subx_views) == 1:
-            return sliced_subx_views[0]
+        istft_output = torch.istft(u, n_fft=self.n_fft, return_complex=False, onesided=False)
         
-        return sliced_subx_views
+        # Trim or zero-pad the ISTFT output to match the original length
+        if len(istft_output) < original_length:
+            pad_length = original_length - len(istft_output)
+            istft_output = torch.cat((istft_output, torch.zeros(pad_length)))
+        elif len(istft_output) > original_length:
+            istft_output = istft_output[:original_length]
+        
+        return istft_output
+    
+    def update_parameters(self, **kwargs):
+        for key, value in kwargs.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+        
+    def add_random_masks_augmentation(self, *time_frequency_views):
+        """
+        Add random zero masks to time-frequency arrays.
+
+        Parameters:
+        - time_frequency_views: List of time-frequency arrays.
+
+        Returns:
+        - masked_views: List of time-frequency arrays with random zero masks.
+        """
+        if not (0 <= self.mask_density <= 1):
+            raise ValueError("mask_density should be between 0 and 1")
+
+        masked_views = []
+
+        for time_frequency_view in time_frequency_views:
+            masked_view = time_frequency_view.copy()
+
+            # Determine the number of zeros to add based on the mask_density
+            num_zeros = int(self.mask_density * time_frequency_view.size)
+
+            # Generate random indices to set to zero
+            mask_indices = np.random.choice(time_frequency_view.size, num_zeros, replace=False)
+
+            # Set the selected indices to zero
+            masked_view.ravel()[mask_indices] = 0
+
+            masked_views.append(masked_view)
+
+        if len(masked_views) == 1:
+            masked_views = masked_views[0]
+
+        return masked_views
+
+    def add_rotation_augmentation(self, *time_frequency_arrays):
+        """
+        Add random rotations to time-frequency arrays.
+
+        Parameters:
+        - time_frequency_arrays: List of time-frequency arrays.
+
+        Returns:
+        - rotated_arrays: List of time-frequency arrays with random rotations.
+        """
+        if self.rotation_max_angle < 0:
+            raise ValueError("max_angle should be a non-negative value")
+
+        rotated_arrays = []
+
+        for time_frequency_array in time_frequency_arrays:
+            # Generate a random rotation angle between -max_angle and max_angle
+            rotation_angle = np.random.uniform(-self.rotation_max_angle, self.rotation_max_angle)
+
+            # Perform the rotation using scipy's rotate function
+            rotated_array = rotate(time_frequency_array, angle=rotation_angle, reshape=False)
+            rotated_arrays.append(rotated_array)
+
+        if len(rotated_arrays) == 1:
+            rotated_arrays = rotated_arrays[0]
+
+        return rotated_arrays
+
+    def add_scale_augmentation(self, *time_frequency_views):
+        """
+        Add random amplitude scaling to time-frequency arrays.
+
+        Parameters:
+        - time_frequency_views: List of time-frequency arrays.
+
+        Returns:
+        - scaled_views: List of time-frequency arrays with random amplitude scaling.
+        """
+        if self.min_scale < 0 or self.max_scale < self.min_scale:
+            raise ValueError("Invalid scaling factor values")
+
+        scaled_views = []
+
+        for time_frequency_view in time_frequency_views:
+            # Generate a random scaling factor between min_scale and max_scale
+            scaling_factor = np.random.uniform(self.min_scale, self.max_scale)
+
+            # Apply the scaling factor to the magnitudes while keeping the phase information
+            scaled_view = np.abs(time_frequency_view) * scaling_factor * np.exp(1j * np.angle(time_frequency_view))
+            scaled_views.append(scaled_view)
+
+        if len(scaled_views) == 1:
+            scaled_views = scaled_views[0]
+
+        return scaled_views
+
+    def add_block_augmentation(self, *time_frequency_views):
+        if self.block_density < 0 or self.block_density > 1:
+            raise ValueError("Density should be between 0 and 1")
+
+        if self.block_size_scale <= 0 or self.block_size_scale > 1:
+            raise ValueError("Invalid scale factor")
+
+        augmented_views = []
+
+        for time_frequency_view in time_frequency_views:
+            # Create a copy of the input array to apply augmentation
+            augmented_view = time_frequency_view.copy()
+
+            # Calculate the block size based on the scale factor and input dimensions
+            block_height = int(augmented_view.shape[0] * self.block_size_scale)
+            block_width = int(augmented_view.shape[1] * self.block_size_scale)
+
+            # Determine the number of blocks to add
+            num_blocks = int(self.block_density * (augmented_view.shape[0] * augmented_view.shape[1]))
+
+            for _ in range(num_blocks):
+                # Randomly choose a position for the block
+                block_x = np.random.randint(0, augmented_view.shape[0] - block_height + 1)
+                block_y = np.random.randint(0, augmented_view.shape[1] - block_width + 1)
+
+                real_block = np.zeros((block_height, block_width), dtype=np.float32)
+                imag_block = np.zeros((block_height, block_width), dtype=np.float32)
+
+                # Add the block to the time-frequency representation
+                augmented_view[block_x:block_x + block_height, block_y:block_y + block_width] = real_block
+                augmented_view[block_x:block_x + block_height, block_y:block_y + block_width] += 1j * imag_block
+
+            # Pad the augmented array to match the input size if needed
+            pad_height = time_frequency_view.shape[0] - augmented_view.shape[0]
+            pad_width = time_frequency_view.shape[1] - augmented_view.shape[1]
+            if pad_height > 0 or pad_width > 0:
+                augmented_view = np.pad(augmented_view, ((0, pad_height), (0, pad_width)), mode='constant')
+
+            augmented_views.append(augmented_view)
+
+        if len(augmented_views) == 1:
+            augmented_views = augmented_views[0]
+
+        return augmented_views
+
+    def add_gaussian_augmentation(self, *time_frequency_views):
+        """
+        Add Gaussian noise to time-frequency arrays.
+
+        Parameters:
+        - time_frequency_views: List of time-frequency arrays.
+
+        Returns:
+        - noisy_views: List of time-frequency arrays with added Gaussian noise.
+        """
+        if self.gaus_std <= 0:
+            raise ValueError("std (standard deviation) should be a positive value")
+
+        noisy_views = []
+
+        for time_frequency_view in time_frequency_views:
+            # Generate Gaussian noise with the specified mean and standard deviation
+            noise = np.random.normal(self.gaus_mean, self.gaus_std, time_frequency_view.shape)
+
+            # Add the generated noise to the original time-frequency array
+            noisy_view = time_frequency_view + noise
+            noisy_views.append(noisy_view)
+
+        if len(noisy_views) == 1:
+            noisy_views = noisy_views[0]
+
+        return noisy_views
+
+    def add_band_augmentation(self, *time_frequency_views):
+        """
+        Perform random scaled band augmentation on time-frequency arrays by removing random frequency bands.
+
+        Parameters:
+        - time_frequency_views: List of time-frequency arrays.
+
+        Returns:
+        - augmented_views: List of time-frequency arrays with random scaled bands removed.
+        """
+        if self.num_bands_to_remove < 0 or self.num_bands_to_remove >= time_frequency_views[0].shape[0]:
+            raise ValueError("Invalid number of bands to remove")
+
+        if self.band_scale_factor <= 0 or self.band_scale_factor > 1:
+            raise ValueError("Invalid scale factor")
+
+        augmented_views = []
+
+        for time_frequency_view in time_frequency_views:
+            # Calculate the band width based on the scale factor and input representation height
+            band_width = int(time_frequency_view.shape[0] * self.band_scale_factor)
+
+            # Create a copy of the input array to apply augmentation
+            augmented_view = time_frequency_view.copy()
+
+            for _ in range(self.num_bands_to_remove):
+                # Randomly choose a starting frequency for the band
+                start_band = np.random.randint(0, time_frequency_view.shape[0] - band_width + 1)
+
+                # Remove the selected band(s)
+                augmented_view[start_band:start_band + band_width, :] = 0
+
+            augmented_views.append(augmented_view)
+
+        if len(augmented_views) == 1:
+            augmented_views = augmented_views[0]
+
+        return augmented_views
+
+    def add_phase_augmentation(self, *time_frequency_views):
+        """
+        Apply phase augmentation to time-frequency array views.
+
+        Parameters:
+        - time_frequency_views: List of time-frequency arrays.
+
+        Returns:
+        - augmented_views: List of time-frequency arrays with complex phase augmentation.
+        """
+        augmented_views = []
+
+        for time_frequency_view in time_frequency_views:
+            augmented_views = []
+        
+            n_channels, subseq_len = time_frequency_view.shape
+            augmented_view = np.zeros((n_channels, subseq_len), dtype=np.complex64)
+
+            for i in range(n_channels):
+                # Modify the phase of the time-frequency view while controlling phase changes
+                phase = np.angle(time_frequency_view[i])
+                phase_change = np.random.uniform(-self.phase_max_change, self.phase_max_change)
+                augmented_phase = phase + phase_change
+
+                # Reconstruct the augmented time-frequency view with modified phase
+                augmented_view[i] = np.abs(time_frequency_view[i]) * np.exp(1j * augmented_phase)
+
+            augmented_views.append(augmented_view)
+
+        if len(augmented_views) == 1:
+            augmented_views = augmented_views[0]
+
+        return augmented_views
