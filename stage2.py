@@ -16,54 +16,71 @@ from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.loggers import WandbLogger
 from preprocessing.preprocess_ucr import UCRDatasetImporter
 from experiments.exp_maskgit import ExpMaskGIT
-#from evaluation.evaluation import Evaluation
+
+# from evaluation.evaluation import Evaluation
 from utils import get_root_dir, load_yaml_param_settings, save_model
 
 
 def load_args():
     parser = ArgumentParser()
-    parser.add_argument('--config', type=str, help="Path to the config data  file.",
-                        default=get_root_dir().joinpath('configs', 'config.yaml'))
-    parser.add_argument('--dataset_names', nargs='+', help="e.g., Adiac Wafer Crop`.", default='')
-    parser.add_argument('--gpu_device_idx', default=0, type=int)
+    parser.add_argument(
+        "--config",
+        type=str,
+        help="Path to the config data  file.",
+        default=get_root_dir().joinpath("configs", "config.yaml"),
+    )
+    parser.add_argument(
+        "--dataset_names", nargs="+", help="e.g., Adiac Wafer Crop`.", default=""
+    )
+    parser.add_argument("--gpu_device_idx", default=0, type=int)
     return parser.parse_args()
 
 
-def train_stage2(config: dict,
-                 train_data_loader: DataLoader,
-                 test_data_loader: DataLoader,
-                 gpu_device_idx,
-                 do_validate: bool,
-                 ):
+def train_stage2(
+    config: dict,
+    train_data_loader: DataLoader,
+    test_data_loader: DataLoader,
+    gpu_device_idx,
+    do_validate: bool,
+):
     """
     :param do_validate: if True, validation is conducted during training with a test dataset.
     """
-    project_name = 'SSL_VQVAE-stage2'
+    project_name = "SSL_VQVAE-stage2"
 
     # fit
     n_classes = len(np.unique(train_data_loader.dataset.Y))
     input_length = train_data_loader.dataset.X.shape[-1]
-    
-    train_exp = ExpMaskGIT(input_length, config, len(train_data_loader.dataset), n_classes)
+
+    train_exp = ExpMaskGIT(
+        input_length, config, len(train_data_loader.dataset), n_classes
+    )
 
     wandb_logger = WandbLogger(project=project_name, name=None, config=config)
-    trainer = pl.Trainer(logger=wandb_logger,
-                         enable_checkpointing=False,
-                         callbacks=[LearningRateMonitor(logging_interval='epoch')],
-                         max_epochs=config['trainer_params']['max_epochs']['stage2'],
-                         devices=[gpu_device_idx,],
-                         accelerator='gpu')
-    trainer.fit(train_exp,
-                train_dataloaders=train_data_loader,
-                val_dataloaders=test_data_loader if do_validate else None
-                )
+    trainer = pl.Trainer(
+        logger=wandb_logger,
+        enable_checkpointing=False,
+        callbacks=[LearningRateMonitor(logging_interval="epoch")],
+        max_epochs=config["trainer_params"]["max_epochs"]["stage2"],
+        devices=[
+            gpu_device_idx,
+        ],
+        accelerator="gpu",
+    )
+    trainer.fit(
+        train_exp,
+        train_dataloaders=train_data_loader,
+        val_dataloaders=test_data_loader if do_validate else None,
+    )
 
     # additional log
-    n_trainable_params = sum(p.numel() for p in train_exp.parameters() if p.requires_grad)
-    wandb.log({'n_trainable_params:': n_trainable_params})
+    n_trainable_params = sum(
+        p.numel() for p in train_exp.parameters() if p.requires_grad
+    )
+    wandb.log({"n_trainable_params:": n_trainable_params})
 
-    print('saving the model...')
-    save_model({'maskgit': train_exp.maskgit}, id=config['dataset']['dataset_name'])
+    print("saving the model...")
+    save_model({"maskgit": train_exp.maskgit}, id=config["dataset"]["dataset_name"])
 
     # test
     """
@@ -87,15 +104,24 @@ def train_stage2(config: dict,
     wandb.finish()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # load config
     args = load_args()
     config = load_yaml_param_settings(args.config)
 
-    dataset_importer = UCRDatasetImporter(**config['dataset'])
-    batch_size = config['dataset']['batch_sizes']['stage1']
-    train_data_loader, test_data_loader = [build_data_pipeline(batch_size, dataset_importer, config, kind) for kind in ['train', 'test']]
+    dataset_importer = UCRDatasetImporter(**config["dataset"])
+    batch_size = config["dataset"]["batch_sizes"]["stage1"]
+    train_data_loader, test_data_loader = [
+        build_data_pipeline(batch_size, dataset_importer, config, kind)
+        for kind in ["train", "test"]
+    ]
 
     # train
     print("starting training")
-    train_stage2(config, train_data_loader, test_data_loader, args.gpu_device_idx, do_validate=False)
+    train_stage2(
+        config,
+        train_data_loader,
+        test_data_loader,
+        args.gpu_device_idx,
+        do_validate=False,
+    )

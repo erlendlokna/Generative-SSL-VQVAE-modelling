@@ -4,7 +4,7 @@ from torch.utils.data import Dataset
 from sklearn.preprocessing import LabelEncoder
 import math
 from utils import get_root_dir, download_ucr_datasets
-from preprocessing.augmentations import TimeFreqAugmentation
+from preprocessing.augmentations import Augmenter
 import tarfile
 import os
 
@@ -20,15 +20,27 @@ class UCRDatasetImporter(object):
         :param dataset_name: e.g., "ElectricDevices"
         :param data_scaling
         """
-        #download_ucr_datasets()
-        self.data_root = get_root_dir().joinpath("data", "UCRArchive_2018", dataset_name)
+        # download_ucr_datasets()
+        self.data_root = get_root_dir().joinpath(
+            "data", "UCRArchive_2018", dataset_name
+        )
 
         # fetch an entire dataset
-        df_train = pd.read_csv(self.data_root.joinpath(f"{dataset_name}_TRAIN.tsv"), sep='\t', header=None)
-        df_test = pd.read_csv(self.data_root.joinpath(f"{dataset_name}_TEST.tsv"), sep='\t', header=None)
+        df_train = pd.read_csv(
+            self.data_root.joinpath(f"{dataset_name}_TRAIN.tsv"), sep="\t", header=None
+        )
+        df_test = pd.read_csv(
+            self.data_root.joinpath(f"{dataset_name}_TEST.tsv"), sep="\t", header=None
+        )
 
-        self.X_train, self.X_test = df_train.iloc[:, 1:].values, df_test.iloc[:, 1:].values
-        self.Y_train, self.Y_test = df_train.iloc[:, [0]].values, df_test.iloc[:, [0]].values
+        self.X_train, self.X_test = (
+            df_train.iloc[:, 1:].values,
+            df_test.iloc[:, 1:].values,
+        )
+        self.Y_train, self.Y_test = (
+            df_train.iloc[:, [0]].values,
+            df_test.iloc[:, [0]].values,
+        )
 
         le = LabelEncoder()
         self.Y_train = le.fit_transform(self.Y_train.ravel())[:, None]
@@ -44,26 +56,30 @@ class UCRDatasetImporter(object):
         np.nan_to_num(self.X_train, copy=False)
         np.nan_to_num(self.X_test, copy=False)
 
-        print('self.X_train.shape:', self.X_train.shape)
-        print('self.X_test.shape:', self.X_test.shape)
+        print("self.X_train.shape:", self.X_train.shape)
+        print("self.X_test.shape:", self.X_test.shape)
 
         print("# unique labels (train):", np.unique(self.Y_train.reshape(-1)))
         print("# unique labels (test):", np.unique(self.Y_test.reshape(-1)))
+
 
 class UCRDataset(Dataset):
     def __init__(self, kind: str, dataset_importer: UCRDatasetImporter, **kwargs):
         super().__init__()
         self.kind = kind
 
-        if kind == 'train':
-            self.X, self.Y = dataset_importer.X_train.astype(np.float32), dataset_importer.Y_train.astype(np.float32)
-        elif kind == 'test':
-            self.X, self.Y = dataset_importer.X_test.astype(np.float32), dataset_importer.Y_test.astype(np.float32)
+        if kind == "train":
+            self.X, self.Y = dataset_importer.X_train.astype(
+                np.float32
+            ), dataset_importer.Y_train.astype(np.float32)
+        elif kind == "test":
+            self.X, self.Y = dataset_importer.X_test.astype(
+                np.float32
+            ), dataset_importer.Y_test.astype(np.float32)
         else:
             raise ValueError
-        
-        self._len = self.X.shape[0]
 
+        self._len = self.X.shape[0]
 
     @staticmethod
     def _assign_float32(*xs):
@@ -87,13 +103,16 @@ class UCRDataset(Dataset):
     def __len__(self):
         return self._len
 
+
 class AugUCRDataset(Dataset):
-    def __init__(self,
-                kind: str,
-                dataset_importer: UCRDatasetImporter,
-                timefreq_augs: TimeFreqAugmentation,
-                n_pairs: int,
-                **kwargs):
+    def __init__(
+        self,
+        kind: str,
+        dataset_importer: UCRDatasetImporter,
+        augmenter: Augmenter,
+        n_pairs: int,
+        **kwargs,
+    ):
         """
         :param kind: "train" / "test"
         :param dataset_importer: instance of the `DatasetImporter` class.
@@ -103,8 +122,7 @@ class AugUCRDataset(Dataset):
         """
         super().__init__()
         self.kind = kind
-        self.augment = (kind == "train")
-        self.timefreq_augs = timefreq_augs
+        self.augmenter = augmenter
         self.n_pairs = n_pairs
 
         if kind == "train":
@@ -116,7 +134,6 @@ class AugUCRDataset(Dataset):
 
         self._len = self.X.shape[0]
 
-
     @staticmethod
     def _assign_float32(*xs):
         """
@@ -127,42 +144,20 @@ class AugUCRDataset(Dataset):
         for x in xs:
             new_xs.append(x.astype(np.float32))
         return new_xs[0] if (len(xs) == 1) else new_xs
-    
+
     def getitem_default(self, idx):
         x, y = self.X[idx, :], self.Y[idx, :]
-        x = x.reshape(1, -1)  # (1 x F)
 
-        subx_view1 = self.timefreq_augs.augment(x) if self.augment else x
-        subx_view2 = self.timefreq_augs.augment(x) if self.augment else x
+        subx_view1 = self.augmenter.augment(x).numpy()
+        subx_view2 = self.augmenter.augment(x).numpy()
+
+        subx_view1 = subx_view1.reshape(1, -1)  # (1 x F)
+        subx_view2 = subx_view2.reshape(1, -1)
+
         subx_view1, subx_view2 = self._assign_float32(subx_view1, subx_view2)
 
         return [subx_view1, subx_view2], y
 
-    def apply_augmentations(self, x):
-        # We will apply augmentations sequentially
-        # The input x is expected to be a single sequence, so we remove the use of *args
-        used_augs = [] if self.kind in ['test', 'valid'] else self.used_augmentations
-        subx_view = x.copy()
-        
-        # Apply each augmentation that is enabled
-        if 'AmpR' in used_augs:
-            subx_view = self.augs.amplitude_resize(subx_view)
-        if 'flip' in used_augs:
-            subx_view = self.augs.flip(subx_view)
-        if 'slope' in used_augs:
-            subx_view = self.augs.add_slope(subx_view)
-        if 'STFT' in used_augs:
-            subx_view = self.augs.stft_augmentation(subx_view)
-        if 'jitter' in used_augs:
-            subx_view = self.augs.jitter(subx_view)
-        if 'slice' in used_augs:
-            subx_view = self.augs.time_slicing(subx_view, expected_length=x.shape[-1])
-        
-        # The output of stft_augmentation is already a numpy array, so no need to convert again
-        
-        return subx_view
-    
-    
     def __getitem__(self, idx):
         return self.getitem_default(idx)
 

@@ -10,17 +10,17 @@ from models.MaskGIT.maskgit import MaskGIT
 
 
 class ExpMaskGIT(ExpBase):
-    def __init__(self,
-                 input_length: int,
-                 config: dict,
-                 n_train_samples: int,
-                 n_classes: int):
+    def __init__(
+        self, input_length: int, config: dict, n_train_samples: int, n_classes: int
+    ):
         super().__init__()
         self.config = config
-        self.maskgit = MaskGIT(input_length, 
-                               **config['MaskGIT'],
-                               config=config, n_classes=n_classes)
-        self.T_max = config['trainer_params']['max_epochs']['stage2'] * (np.ceil(n_train_samples / config['dataset']['batch_sizes']['stage2']) + 1)
+        self.maskgit = MaskGIT(
+            input_length, **config["MaskGIT"], config=config, n_classes=n_classes
+        )
+        self.T_max = config["trainer_params"]["max_epochs"]["stage2"] * (
+            np.ceil(n_train_samples / config["dataset"]["batch_sizes"]["stage2"]) + 1
+        )
 
     def forward(self, x):
         """
@@ -33,7 +33,9 @@ class ExpMaskGIT(ExpBase):
 
         logits, target = self.maskgit(x, y)
 
-        prior_loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), target.reshape(-1))
+        prior_loss = F.cross_entropy(
+            logits.reshape(-1, logits.size(-1)), target.reshape(-1)
+        )
         loss = prior_loss
 
         # lr scheduler
@@ -41,9 +43,10 @@ class ExpMaskGIT(ExpBase):
         sch.step()
 
         # log
-        loss_hist = {'loss': loss,
-                     'prior_loss': prior_loss,
-                     }
+        loss_hist = {
+            "loss": loss,
+            "prior_loss": prior_loss,
+        }
 
         # maskgit sampling
         r = np.random.rand()
@@ -53,14 +56,16 @@ class ExpMaskGIT(ExpBase):
             class_index = np.random.choice(np.concatenate(([None], np.unique(y.cpu()))))
 
             # Unconditional sampling
-            s = self.maskgit.iterative_decoding(device=x.device, class_index=class_index)
+            s = self.maskgit.iterative_decoding(
+                device=x.device, class_index=class_index
+            )
             x_new = self.maskgit.decode_token_ind_to_timeseries(s).cpu()
 
             b = 0
             fig, axes = plt.subplots(1, 1, figsize=(4, 2))
             axes.plot(x_new[b, 0, :])
             axes.set_ylim(-4, 4)
-            plt.title(f'ep_{self.current_epoch}; class-{class_index}')
+            plt.title(f"ep_{self.current_epoch}; class-{class_index}")
             plt.tight_layout()
             wandb.log({f"maskgit sample": wandb.Image(plt)})
             plt.close()
@@ -76,36 +81,48 @@ class ExpMaskGIT(ExpBase):
 
         logits, target = self.maskgit(x, y)
 
-        prior_loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), target.reshape(-1))
+        prior_loss = F.cross_entropy(
+            logits.reshape(-1, logits.size(-1)), target.reshape(-1)
+        )
         loss = prior_loss
-        
+
         # log
-        loss_hist = {'loss': loss,
-                     'prior_loss': prior_loss,
-                     }
+        loss_hist = {
+            "loss": loss,
+            "prior_loss": prior_loss,
+        }
 
         detach_the_unnecessary(loss_hist)
         return loss_hist
 
     def configure_optimizers(self):
-        opt = torch.optim.AdamW([{'params': self.maskgit.parameters(), 'lr': self.config['exp_params']['LR']},
-                                 ],
-                                weight_decay=self.config['exp_params']['weight_decay'])
-        return {'optimizer': opt, 'lr_scheduler': CosineAnnealingLR(opt, self.T_max)}
+        opt = torch.optim.AdamW(
+            [
+                {
+                    "params": self.maskgit.parameters(),
+                    "lr": self.config["exp_params"]["LR"],
+                },
+            ],
+            weight_decay=self.config["exp_params"]["weight_decay"],
+        )
+        return {"optimizer": opt, "lr_scheduler": CosineAnnealingLR(opt, self.T_max)}
 
     def test_step(self, batch, batch_idx):
         x, y = batch
 
         logits, target = self.maskgit(x, y)
 
-        prior_loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), target.reshape(-1))
+        prior_loss = F.cross_entropy(
+            logits.reshape(-1, logits.size(-1)), target.reshape(-1)
+        )
 
         loss = prior_loss
 
         # log
-        loss_hist = {'loss': loss,
-                     'prior_loss': prior_loss,
-                     }
+        loss_hist = {
+            "loss": loss,
+            "prior_loss": prior_loss,
+        }
 
         detach_the_unnecessary(loss_hist)
         return loss_hist

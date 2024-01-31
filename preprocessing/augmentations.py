@@ -1,56 +1,145 @@
 import numpy as np
 
 import torch
-import random 
-from scipy.ndimage import rotate
+import random
+from scipy.ndimage import rotate, affine_transform
 
 
-class TimeAugmentations(object):
-    def __init__(self, AmpR_rate, slope_rate, jitter_std,  **kwargs):
-        """
-        :param AmpR_rate: rate for the `random amplitude resize`.
-        """
+class Augmenter(object):
+    def __init__(self, time_augs, timefreq_augs, aug_params, max_aug_methods, **kwargs):
+        self.time_augs = time_augs if time_augs is not None else []
+        self.timefreq_augs = timefreq_augs if timefreq_augs is not None else []
+
+        self.max_aug_methods = max_aug_methods
+
+        self.time_augmenter = TimeAugmenter(**aug_params)
+        self.timefreq_augmenter = TimeFreqAugmenter(**aug_params)
+
+    def augment(self, X, return_combinations=False):
+        if isinstance(X, torch.Tensor):
+            X = X.numpy()
+
+        # Randomly constructing a combination of augmentation methods
+        all_augs = self.time_augs + self.timefreq_augs
+        num_aug_methods = np.random.randint(1, self.max_aug_methods)
+        np.random.shuffle(all_augs)
+        picked_augs = all_augs[:num_aug_methods]
+
+        time_methods_to_apply = set(picked_augs).intersection(self.time_augs)
+        timefreq_methods_to_apply = set(picked_augs).intersection(self.timefreq_augs)
+
+        # Applying time augmentations
+        for method_name in time_methods_to_apply:
+            X = self.time_augmenter.apply_augmentation(method_name, X)
+
+        # Convert to time-frequency representation
+        U = self.timefreq_augmenter.stft(X).numpy()
+
+        # Applying time-frequency augmentations
+        for method_name in timefreq_methods_to_apply:
+            U = self.timefreq_augmenter.apply_augmentation(method_name, U)
+        # converting back
+        X = self.timefreq_augmenter.istft(
+            torch.from_numpy(U), original_length=X.shape[-1]
+        )
+
+        if return_combinations:
+            return X, picked_augs
+        else:
+            return X
+
+
+class TimeAugmenter(object):
+    def __init__(self, AmpR_rate, slope_rate, noise_std, noise_window_scale, **kwargs):
         self.AmpR_rate = AmpR_rate
         self.slope_rate = slope_rate
-        self.jitter_std = jitter_std  
+        self.noise_std = noise_std
+        # config method mapping:
+        self.method_mapping = {
+            "amplitude_resize": "add_amplitude_resize",
+            "flip": "add_flip",
+            "slope": "add_slope",
+            "jitter": "add_jitter",
+            "noise_window": "add_noise_window",
+        }
+
+    def apply_augmentation(self, method_name, input):
+        if method_name in self.method_mapping:
+            method = getattr(self, self.method_mapping[method_name])
+            return method(input)
+        else:
+            raise ValueError(
+                f"{method_name} is not a valid method for time augmentation"
+            )
 
     def update_parameters(self, **kwargs):
         for key, value in kwargs.items():
             if hasattr(self, key):
                 setattr(self, key, value)
 
-    def amplitude_resize(self, *subx_views):
+    # --- Augmentation methods ---
+    def add_amplitude_resize(self, *subx_views):
         """
-        :param subx_view: (n_channels * subseq_len)
-        """
-        new_subx_views = []
-        n_channels = subx_views[0].shape[0]
-        for i in range(len(subx_views)):
-            mul_AmpR = 1 + np.random.normal(0, self.AmpR_rate, size=(n_channels, 1))
-            new_subx_view = subx_views[i] * mul_AmpR
-            new_subx_views.append(new_subx_view)
+        Apply random amplitude resizing to input sequences.
 
-        if len(new_subx_views) == 1:
-            new_subx_views = new_subx_views[0]
-        return new_subx_views
-    
-    def flip(self, *subx_views):
+        Parameters:
+        - subx_views: Variable number of input sequences (subseq_len).
+
+        Returns:
+        - augmented_views: List of sequences with random amplitude resizing.
+        """
+
+        augmented_views = []
+
+        for subx in subx_views:
+            subseq_len = subx.shape[0]
+            mul_AmpR = 1 + np.random.normal(0, self.AmpR_rate, size=(subseq_len,))
+            augmented_view = subx * mul_AmpR
+
+            augmented_views.append(augmented_view)
+
+        if len(augmented_views) == 1:
+            augmented_views = augmented_views[0]
+
+        return augmented_views
+
+    def add_flip(self, *subx_views):
         """
         Randomly flip the input sequences horizontally.
         """
-        flipped_subx_views = [np.flip(subx, axis=-1) if np.random.choice([True, False]) else subx for subx in subx_views]
+        flipped_subx_views = [np.flip(subx, axis=-1) for subx in subx_views]
+
         if len(flipped_subx_views) == 1:
             flipped_subx_views = flipped_subx_views[0]
+
         return flipped_subx_views
-    
+
+    def add_noise(self, *subx_views):
+        """
+        Add random jitter (noise) to each data point in the input sequence.
+        """
+        jittered_subx_views = []
+
+        for subx in subx_views:
+            jitter = np.random.normal(0, self.jitter_std, subx.shape)
+            jittered_subx = subx + jitter
+            jittered_subx_views.append(jittered_subx)
+
+        if len(jittered_subx_views) == 1:
+            jittered_subx_views = jittered_subx_views[0]
+
+        return jittered_subx_views
+
     def add_slope(self, *subx_views):
         """
         Add a linear slope to the input sequences.
         """
         sloped_subx_views = []
+
         for subx in subx_views:
-            n_channels, subseq_len = subx.shape
-            slope = np.random.uniform(-self.slope_rate, self.slope_rate, size=(n_channels, 1))
+            # Handle 1D data
+            subseq_len = subx.shape[0]
+            slope = np.random.uniform(-self.slope_rate, self.slope_rate)
             x = np.arange(subseq_len)
             slope_component = slope * x
             sloped_subx = subx + slope_component
@@ -59,30 +148,62 @@ class TimeAugmentations(object):
         if len(sloped_subx_views) == 1:
             sloped_subx_views = sloped_subx_views[0]
         return sloped_subx_views
-    
-    
-    def jitter(self, *subx_views):
+
+    def add_noise_window(self, *subx_views):
         """
-        Add random jitter (noise) to each data point in the input sequence.
+        Add white noise within a random window of the input sequences.
+
+        Parameters:
+        - subx_views: Variable number of input sequences (subseq_len).
+
+        Returns:
+        - augmented_views: List of sequences with white noise added within a random window.
         """
-        jittered_subx_views = []
+
+        augmented_views = []
+
         for subx in subx_views:
-            jitter = np.random.normal(0, self.jitter_std, subx.shape)
-            jittered_subx = subx + jitter
-            jittered_subx_views.append(jittered_subx)
+            subseq_len = subx.shape[0]
 
-        if len(jittered_subx_views) == 1:
-            jittered_subx_views = jittered_subx_views[0]
-        return jittered_subx_views
-    
+            # Randomly select a window within the sequence
+            window_size = int(subseq_len * self.noise_window_rate)
+            window_start = np.random.randint(0, subseq_len - window_size + 1)
+            window_end = window_start + window_size
 
-class TimeFreqAugmentation(object):
-    def __init__(self, n_fft=16, mask_density=0.2, rotation_max_angle=10.0,
-                 min_scale=0.8, max_scale=1.2, block_size_scale=0.1,
-                 block_density=0.2, gaus_mean=0, gaus_std=0.01,
-                 num_bands_to_remove=1, band_scale_factor=0.1,
-                 phase_max_change=np.pi/4, **kwargs):
-        
+            # Generate white noise for the window
+            noise = np.random.normal(0, self.noise_std, size=(window_size,))
+
+            # Apply white noise within the window
+            augmented_view = subx.copy()
+            augmented_view[window_start:window_end] += noise
+
+            augmented_views.append(augmented_view)
+
+        if len(augmented_views) == 1:
+            augmented_views = augmented_views[0]
+
+        return augmented_views
+
+
+class TimeFreqAugmenter(object):
+    def __init__(
+        self,
+        n_fft=16,
+        mask_density=0.2,
+        rotation_max_angle=10.0,
+        min_scale=0.8,
+        max_scale=1.2,
+        block_size_scale=0.1,
+        block_density=0.2,
+        gaus_mean=0,
+        gaus_std=0.01,
+        num_bands_to_remove=1,
+        band_scale_factor=0.1,
+        phase_max_change=np.pi / 4,
+        max_shear_x=0.1,
+        max_shear_y=0.1,
+        **kwargs,
+    ):
         self.n_fft = n_fft
         self.mask_density = mask_density
         self.rotation_max_angle = rotation_max_angle
@@ -95,32 +216,68 @@ class TimeFreqAugmentation(object):
         self.num_bands_to_remove = num_bands_to_remove
         self.band_scale_factor = band_scale_factor
         self.phase_max_change = phase_max_change
+        self.max_shear_x = max_shear_x
+        self.max_shear_y = max_shear_y
 
-    def stft(self, x):
-        if not isinstance(x, torch.Tensor):
-            x = torch.tensor(x, dtype=torch.float32)
-        return torch.stft(x, n_fft=self.n_fft, return_complex=True, onesided=False)
+        self.method_mapping = {
+            "random_masks": "add_random_masks_augmentation",
+            "rotation": "add_rotation_augmentation",
+            "scale": "add_scale_augmentation",
+            "block": "add_block_augmentation",
+            "gaussian": "add_gaussian_augmentation",
+            "band": "add_band_augmentation",
+            "phase": "add_phase_augmentation",
+            "shear": "add_shear_augmentation",
+        }
 
-    def istft(self, u, original_length):
-        if not isinstance(u, torch.Tensor):
-            u = torch.tensor(u, dtype=torch.float32)
-        
-        istft_output = torch.istft(u, n_fft=self.n_fft, return_complex=False, onesided=False)
-        
-        # Trim or zero-pad the ISTFT output to match the original length
-        if len(istft_output) < original_length:
-            pad_length = original_length - len(istft_output)
-            istft_output = torch.cat((istft_output, torch.zeros(pad_length)))
-        elif len(istft_output) > original_length:
-            istft_output = istft_output[:original_length]
-        
-        return istft_output
-    
     def update_parameters(self, **kwargs):
         for key, value in kwargs.items():
             if hasattr(self, key):
                 setattr(self, key, value)
-        
+
+    def apply_augmentation(self, method_name, input):
+        if method_name in self.method_mapping:
+            method = getattr(self, self.method_mapping[method_name])
+            return method(input)
+        else:
+            raise ValueError(
+                f"{method_name} is not a valid method for time-frequency augmentation"
+            )
+
+    def apply_augmentations(self, method_names, input):
+        X = input.copy()
+
+        for method_name in method_names:
+            input = self.apply_augmentation(method_name, input)
+        return input
+
+    def stft(self, x):
+        if not isinstance(x, torch.Tensor):
+            x = torch.tensor(x.copy(), dtype=torch.float32)
+        return torch.stft(x, n_fft=self.n_fft, return_complex=True, onesided=False)
+
+    def istft(self, u, original_length):
+        if not isinstance(u, torch.Tensor):
+            u = torch.tensor(u.copy(), dtype=torch.float32)
+
+        # Convert 1-dimensional tensor to 2-dimensional (if needed)
+        if len(u.shape) == 1:
+            u = u.reshape(1, -1)
+
+        istft_output = torch.istft(
+            u, n_fft=self.n_fft, return_complex=False, onesided=False
+        )
+
+        # Trim or zero-pad the ISTFT output to match the original length
+        if len(istft_output) < original_length:
+            pad_length = original_length - len(istft_output)
+            istft_output = torch.cat((istft_output, torch.zeros(1, pad_length)), dim=-1)
+        elif len(istft_output) > original_length:
+            istft_output = istft_output[:, :original_length]
+
+        return istft_output
+
+    # --- Augmentation methods ---
     def add_random_masks_augmentation(self, *time_frequency_views):
         """
         Add random zero masks to time-frequency arrays.
@@ -143,7 +300,9 @@ class TimeFreqAugmentation(object):
             num_zeros = int(self.mask_density * time_frequency_view.size)
 
             # Generate random indices to set to zero
-            mask_indices = np.random.choice(time_frequency_view.size, num_zeros, replace=False)
+            mask_indices = np.random.choice(
+                time_frequency_view.size, num_zeros, replace=False
+            )
 
             # Set the selected indices to zero
             masked_view.ravel()[mask_indices] = 0
@@ -172,16 +331,60 @@ class TimeFreqAugmentation(object):
 
         for time_frequency_array in time_frequency_arrays:
             # Generate a random rotation angle between -max_angle and max_angle
-            rotation_angle = np.random.uniform(-self.rotation_max_angle, self.rotation_max_angle)
+            rotation_angle = np.random.uniform(
+                -self.rotation_max_angle, self.rotation_max_angle
+            )
 
             # Perform the rotation using scipy's rotate function
-            rotated_array = rotate(time_frequency_array, angle=rotation_angle, reshape=False)
+            rotated_array = rotate(
+                time_frequency_array, angle=rotation_angle, reshape=False
+            )
             rotated_arrays.append(rotated_array)
 
         if len(rotated_arrays) == 1:
             rotated_arrays = rotated_arrays[0]
 
         return rotated_arrays
+
+    def add_shear_augmentation(self, *time_frequency_arrays):
+        """
+        Apply shear augmentation to time-frequency arrays in randomly chosen x or y direction.
+
+        Parameters:
+        - time_frequency_arrays: List of time-frequency arrays.
+
+        Returns:
+        - sheared_arrays: List of time-frequency arrays with shear applied.
+        """
+        sheared_arrays = []
+
+        for time_frequency_array in time_frequency_arrays:
+            # Randomly choose the direction (x or y)
+            shear_direction = np.random.choice(["x", "y"])
+
+            if shear_direction == "x":
+                # Calculate the maximum shear value based on array width
+                shear_x = np.random.uniform(-self.max_shear_x, self.max_shear_x)
+                shear_y = 0.0
+            else:  # Shear in y direction
+                # Calculate the maximum shear value based on array height
+                shear_x = 0.0
+                shear_y = np.random.uniform(-self.max_shear_y, self.max_shear_y)
+
+            # Apply shear transformation using affine_transform
+            # sheared_array = affine_transform(time_frequency_array, matrix=[[1.0, shear_x], [shear_y, 1.0]], mode='constant')
+            sheared_array = affine_transform(
+                time_frequency_array,
+                matrix=[[1.0, shear_x], [shear_y, 1.0]],
+                mode="constant",
+            )
+
+            sheared_arrays.append(sheared_array)
+
+        if len(sheared_arrays) == 1:
+            sheared_arrays = sheared_arrays[0]
+
+        return sheared_arrays
 
     def add_scale_augmentation(self, *time_frequency_views):
         """
@@ -203,7 +406,11 @@ class TimeFreqAugmentation(object):
             scaling_factor = np.random.uniform(self.min_scale, self.max_scale)
 
             # Apply the scaling factor to the magnitudes while keeping the phase information
-            scaled_view = np.abs(time_frequency_view) * scaling_factor * np.exp(1j * np.angle(time_frequency_view))
+            scaled_view = (
+                np.abs(time_frequency_view)
+                * scaling_factor
+                * np.exp(1j * np.angle(time_frequency_view))
+            )
             scaled_views.append(scaled_view)
 
         if len(scaled_views) == 1:
@@ -229,25 +436,37 @@ class TimeFreqAugmentation(object):
             block_width = int(augmented_view.shape[1] * self.block_size_scale)
 
             # Determine the number of blocks to add
-            num_blocks = int(self.block_density * (augmented_view.shape[0] * augmented_view.shape[1]))
+            num_blocks = int(
+                self.block_density * (augmented_view.shape[0] * augmented_view.shape[1])
+            )
 
             for _ in range(num_blocks):
                 # Randomly choose a position for the block
-                block_x = np.random.randint(0, augmented_view.shape[0] - block_height + 1)
-                block_y = np.random.randint(0, augmented_view.shape[1] - block_width + 1)
+                block_x = np.random.randint(
+                    0, augmented_view.shape[0] - block_height + 1
+                )
+                block_y = np.random.randint(
+                    0, augmented_view.shape[1] - block_width + 1
+                )
 
                 real_block = np.zeros((block_height, block_width), dtype=np.float32)
                 imag_block = np.zeros((block_height, block_width), dtype=np.float32)
 
                 # Add the block to the time-frequency representation
-                augmented_view[block_x:block_x + block_height, block_y:block_y + block_width] = real_block
-                augmented_view[block_x:block_x + block_height, block_y:block_y + block_width] += 1j * imag_block
+                augmented_view[
+                    block_x : block_x + block_height, block_y : block_y + block_width
+                ] = real_block
+                augmented_view[
+                    block_x : block_x + block_height, block_y : block_y + block_width
+                ] += (1j * imag_block)
 
             # Pad the augmented array to match the input size if needed
             pad_height = time_frequency_view.shape[0] - augmented_view.shape[0]
             pad_width = time_frequency_view.shape[1] - augmented_view.shape[1]
             if pad_height > 0 or pad_width > 0:
-                augmented_view = np.pad(augmented_view, ((0, pad_height), (0, pad_width)), mode='constant')
+                augmented_view = np.pad(
+                    augmented_view, ((0, pad_height), (0, pad_width)), mode="constant"
+                )
 
             augmented_views.append(augmented_view)
 
@@ -273,7 +492,9 @@ class TimeFreqAugmentation(object):
 
         for time_frequency_view in time_frequency_views:
             # Generate Gaussian noise with the specified mean and standard deviation
-            noise = np.random.normal(self.gaus_mean, self.gaus_std, time_frequency_view.shape)
+            noise = np.random.normal(
+                self.gaus_mean, self.gaus_std, time_frequency_view.shape
+            )
 
             # Add the generated noise to the original time-frequency array
             noisy_view = time_frequency_view + noise
@@ -294,7 +515,10 @@ class TimeFreqAugmentation(object):
         Returns:
         - augmented_views: List of time-frequency arrays with random scaled bands removed.
         """
-        if self.num_bands_to_remove < 0 or self.num_bands_to_remove >= time_frequency_views[0].shape[0]:
+        if (
+            self.num_bands_to_remove < 0
+            or self.num_bands_to_remove >= time_frequency_views[0].shape[0]
+        ):
             raise ValueError("Invalid number of bands to remove")
 
         if self.band_scale_factor <= 0 or self.band_scale_factor > 1:
@@ -311,10 +535,12 @@ class TimeFreqAugmentation(object):
 
             for _ in range(self.num_bands_to_remove):
                 # Randomly choose a starting frequency for the band
-                start_band = np.random.randint(0, time_frequency_view.shape[0] - band_width + 1)
+                start_band = np.random.randint(
+                    0, time_frequency_view.shape[0] - band_width + 1
+                )
 
                 # Remove the selected band(s)
-                augmented_view[start_band:start_band + band_width, :] = 0
+                augmented_view[start_band : start_band + band_width, :] = 0
 
             augmented_views.append(augmented_view)
 
@@ -337,18 +563,22 @@ class TimeFreqAugmentation(object):
 
         for time_frequency_view in time_frequency_views:
             augmented_views = []
-        
+
             n_channels, subseq_len = time_frequency_view.shape
             augmented_view = np.zeros((n_channels, subseq_len), dtype=np.complex64)
 
             for i in range(n_channels):
                 # Modify the phase of the time-frequency view while controlling phase changes
                 phase = np.angle(time_frequency_view[i])
-                phase_change = np.random.uniform(-self.phase_max_change, self.phase_max_change)
+                phase_change = np.random.uniform(
+                    -self.phase_max_change, self.phase_max_change
+                )
                 augmented_phase = phase + phase_change
 
                 # Reconstruct the augmented time-frequency view with modified phase
-                augmented_view[i] = np.abs(time_frequency_view[i]) * np.exp(1j * augmented_phase)
+                augmented_view[i] = np.abs(time_frequency_view[i]) * np.exp(
+                    1j * augmented_phase
+                )
 
             augmented_views.append(augmented_view)
 
