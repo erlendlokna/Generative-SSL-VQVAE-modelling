@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 from models.MaskGIT.maskgit import MaskGIT
 from preprocessing.data_pipeline import build_data_pipeline
 from utils import get_root_dir, load_yaml_param_settings
+from tqdm import tqdm
 
 
 @torch.no_grad()
@@ -37,8 +38,8 @@ def unconditional_sample(
     quantize_new = []
     sample_callback = maskgit.iterative_decoding
 
-    for i in range(n_iters):
-        print(f"iter: {i+1}/{n_iters}")
+    for i in tqdm(range(n_iters)):
+        # print(f"it: {i+1}/{n_iters}")
         b = batch_size
         if (i + 1 == n_iters) and is_residual_batch:
             b = n_samples - ((n_iters - 1) * batch_size)
@@ -58,9 +59,6 @@ def unconditional_sample(
 
             quantize_new.append(quantize)
         else:
-            print("------")
-            print(embed_ind.shape)
-            print("------")
             x = maskgit.decode_token_ind_to_timeseries(embed_ind).cpu()
 
         x_new.append(x)
