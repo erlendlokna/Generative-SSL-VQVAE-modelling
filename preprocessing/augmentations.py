@@ -15,9 +15,18 @@ class Augmenter(object):
         self.time_augmenter = TimeAugmenter(**aug_params)
         self.timefreq_augmenter = TimeFreqAugmenter(**aug_params)
 
-    def augment(self, X, return_combinations=False):
-        if isinstance(X, torch.Tensor):
-            X = X.numpy()
+    def augment(self, input_timeseries, return_combinations=False):
+        """
+        Augments a single time series with a random combination of augmentation methods.
+        """
+        if isinstance(input_timeseries, torch.Tensor):
+            input_timeseries = input_timeseries.numpy()
+        elif not isinstance(input_timeseries, np.ndarray):
+            raise ValueError(
+                "input_timeseries should be a numpy array or a torch tensor"
+            )
+
+        X = input_timeseries.copy()
 
         # Randomly constructing a combination of augmentation methods
         all_augs = self.time_augs + self.timefreq_augs
@@ -29,15 +38,14 @@ class Augmenter(object):
         timefreq_methods_to_apply = set(picked_augs).intersection(self.timefreq_augs)
 
         # Applying time augmentations
-        for method_name in time_methods_to_apply:
-            X = self.time_augmenter.apply_augmentation(method_name, X)
+        X = self.time_augmenter.apply_augmentations(time_methods_to_apply, X)
 
         # Convert to time-frequency representation
         U = self.timefreq_augmenter.stft(X).numpy()
 
         # Applying time-frequency augmentations
-        for method_name in timefreq_methods_to_apply:
-            U = self.timefreq_augmenter.apply_augmentation(method_name, U)
+        U = self.timefreq_augmenter.apply_augmentations(timefreq_methods_to_apply, U)
+
         # converting back
         X = self.timefreq_augmenter.istft(
             torch.from_numpy(U), original_length=X.shape[-1]
@@ -54,6 +62,8 @@ class TimeAugmenter(object):
         self.AmpR_rate = AmpR_rate
         self.slope_rate = slope_rate
         self.noise_std = noise_std
+        self.noise_window_scale = noise_window_scale
+
         # config method mapping:
         self.method_mapping = {
             "amplitude_resize": "add_amplitude_resize",
@@ -71,6 +81,12 @@ class TimeAugmenter(object):
             raise ValueError(
                 f"{method_name} is not a valid method for time augmentation"
             )
+
+    def apply_augmentations(self, method_names, input):
+        X = input.copy()
+        for method_name in method_names:
+            input = self.apply_augmentation(method_name, input)
+        return input
 
     def update_parameters(self, **kwargs):
         for key, value in kwargs.items():
@@ -166,7 +182,7 @@ class TimeAugmenter(object):
             subseq_len = subx.shape[0]
 
             # Randomly select a window within the sequence
-            window_size = int(subseq_len * self.noise_window_rate)
+            window_size = int(subseq_len * self.noise_window_scale)
             window_start = np.random.randint(0, subseq_len - window_size + 1)
             window_end = window_start + window_size
 
@@ -246,7 +262,6 @@ class TimeFreqAugmenter(object):
 
     def apply_augmentations(self, method_names, input):
         X = input.copy()
-
         for method_name in method_names:
             input = self.apply_augmentation(method_name, input)
         return input

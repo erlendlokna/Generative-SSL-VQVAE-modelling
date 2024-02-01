@@ -46,24 +46,24 @@ augmentations:
   time_augs:
     #- "noise"
     #- 'amplitude_resize'
-    #- 'slope'
+    - "slope"
     #- 'flip'
     - "noise_window"
   timefreq_augs:
-    #- "random_masks"
+    - "random_masks"
     #- 'block'
     #- 'band'
     #- 'phase'
     #- 'rotation'
-    #- 'gaussian'
+    - "gaussian"
     #- 'shear'
-    #- 'scale'
+    - "scale"
 
   aug_params:
     n_fft: 8
     #Time
-    noise_std: 0.01
-    noise_window_scale: 0.1
+    noise_std: 0.1
+    noise_window_scale: 0.3
     AmpR_rate: 0.1
     slope_rate: 0.005
     #TimeFreq

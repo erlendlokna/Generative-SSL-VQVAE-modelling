@@ -14,10 +14,10 @@ import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 
-from generators.maskgit import MaskGIT
+from models.MaskGIT.maskgit import MaskGIT
 from preprocessing.data_pipeline import build_data_pipeline
-from preprocessing.preprocess_ucr import DatasetImporterUCR
-from generators.sample import unconditional_sample, conditional_sample
+from preprocessing.preprocess_ucr import UCRDatasetImporter
+from models.MaskGIT.sample import unconditional_sample, conditional_sample
 from supervised_FCN.example_pretrained_model_loading import load_pretrained_FCN
 from supervised_FCN.example_compute_FID import calculate_fid
 from supervised_FCN.example_compute_IS import calculate_inception_score
@@ -32,7 +32,14 @@ class Evaluation(object):
     - PCA
     - t-SNE
     """
-    def __init__(self, subset_dataset_name: str, gpu_device_index: int, config: dict, batch_size: int = 256):
+
+    def __init__(
+        self,
+        subset_dataset_name: str,
+        gpu_device_index: int,
+        config: dict,
+        batch_size: int = 256,
+    ):
         self.subset_dataset_name = subset_dataset_name
         self.device = torch.device(gpu_device_index)
         self.batch_size = batch_size
@@ -43,22 +50,37 @@ class Evaluation(object):
         self.fcn.eval()
 
         # load the numpy matrix of the test samples
-        dataset_importer = DatasetImporterUCR(subset_dataset_name, data_scaling=True)
+        dataset_importer = UCRDatasetImporter(subset_dataset_name, data_scaling=True)
         self.X_test = dataset_importer.X_test[:, None, :]
-        n_fft = self.config['VQ-VAE']['n_fft']
-        self.X_test = timefreq_to_time(time_to_timefreq(torch.from_numpy(self.X_test), n_fft, 1), n_fft, 1)
+        n_fft = self.config["VQVAE"]["n_fft"]
+        self.X_test = timefreq_to_time(
+            time_to_timefreq(torch.from_numpy(self.X_test), n_fft, 1), n_fft, 1
+        )
         self.X_test = self.X_test.numpy()
 
-    def sample(self, n_samples: int, input_length: int, n_classes: int, kind: str, class_index: int = -1):
-        assert kind in ['unconditional', 'conditional']
+    def sample(
+        self,
+        n_samples: int,
+        input_length: int,
+        n_classes: int,
+        kind: str,
+        class_index: int = -1,
+    ):
+        assert kind in ["unconditional", "conditional"]
 
         # build
-        maskgit = MaskGIT(self.subset_dataset_name, input_length, **self.config['MaskGIT'], config=self.config, n_classes=n_classes).to(self.device)
+        maskgit = MaskGIT(
+            self.subset_dataset_name,
+            input_length,
+            **self.config["MaskGIT"],
+            config=self.config,
+            n_classes=n_classes,
+        ).to(self.device)
 
         # load
-        fname = f'maskgit-{self.subset_dataset_name}.ckpt'
+        fname = f"maskgit-{self.subset_dataset_name}.ckpt"
         try:
-            ckpt_fname = os.path.join('saved_models', fname)
+            ckpt_fname = os.path.join("saved_models", fname)
             maskgit.load_state_dict(torch.load(ckpt_fname), strict=False)
         except FileNotFoundError:
             ckpt_fname = Path(tempfile.gettempdir()).joinpath(fname)
@@ -68,14 +90,18 @@ class Evaluation(object):
         maskgit.eval()
 
         # sampling
-        if kind == 'unconditional':
-            x_new_l, x_new_h, x_new = unconditional_sample(maskgit, n_samples, self.device, batch_size=self.batch_size)  # (b c l); b=n_samples, c=1 (univariate)
-        elif kind == 'conditional':
-            x_new_l, x_new_h, x_new = conditional_sample(maskgit, n_samples, self.device, class_index, self.batch_size)  # (b c l); b=n_samples, c=1 (univariate)
+        if kind == "unconditional":
+            x_new = unconditional_sample(
+                maskgit, n_samples, self.device, batch_size=self.batch_size
+            )  # (b c l); b=n_samples, c=1 (univariate)
+        elif kind == "conditional":
+            x_new = conditional_sample(
+                maskgit, n_samples, self.device, class_index, self.batch_size
+            )  # (b c l); b=n_samples, c=1 (univariate)
         else:
             raise ValueError
 
-        return x_new_l, x_new_h, x_new
+        return x_new
 
     def compute_z(self, X_gen: torch.Tensor) -> (np.ndarray, np.ndarray):
         """
@@ -93,15 +119,30 @@ class Evaluation(object):
         for i in range(n_iters):
             s = slice(i * self.batch_size, (i + 1) * self.batch_size)
 
-            z_t = self.fcn(torch.from_numpy(self.X_test[s]).float().to(self.device), return_feature_vector=True).cpu().detach().numpy()
-            z_g = self.fcn(X_gen[s].float().to(self.device), return_feature_vector=True).cpu().detach().numpy()
+            z_t = (
+                self.fcn(
+                    torch.from_numpy(self.X_test[s]).float().to(self.device),
+                    return_feature_vector=True,
+                )
+                .cpu()
+                .detach()
+                .numpy()
+            )
+            z_g = (
+                self.fcn(X_gen[s].float().to(self.device), return_feature_vector=True)
+                .cpu()
+                .detach()
+                .numpy()
+            )
 
             z_test.append(z_t)
             z_gen.append(z_g)
         z_test, z_gen = np.concatenate(z_test, axis=0), np.concatenate(z_gen, axis=0)
         return z_test, z_gen
 
-    def fid_score(self, z_test: np.ndarray, z_gen: np.ndarray) -> (int, (np.ndarray, np.ndarray)):
+    def fid_score(
+        self, z_test: np.ndarray, z_gen: np.ndarray
+    ) -> (int, (np.ndarray, np.ndarray)):
         fid = calculate_fid(z_test, z_gen)
         return fid, (z_test, z_gen)
 
@@ -127,7 +168,9 @@ class Evaluation(object):
         IS_mean, IS_std = calculate_inception_score(p_yx_gen)
         return IS_mean, IS_std
 
-    def log_visual_inspection(self, n_plot_samples: int, X_gen, ylim: tuple = (-5, 5)):
+    def visual_inspection(
+        self, n_plot_samples: int, X_gen, ylim: tuple = (-5, 5), log=True
+    ):
         # `X_test`
         sample_ind = np.random.randint(0, self.X_test.shape[0], n_plot_samples)
         fig, axes = plt.subplots(2, 1, figsize=(4, 4))
@@ -144,14 +187,28 @@ class Evaluation(object):
         plt.grid()
 
         plt.tight_layout()
-        wandb.log({"visual inspection": wandb.Image(plt)})
-        plt.close()
+        if log:
+            wandb.log({"visual inspection": wandb.Image(plt)})
+            plt.close()
+        else:
+            plt.show()
 
-    def log_pca(self, n_plot_samples: int, X_gen, z_test: np.ndarray, z_gen: np.ndarray):
+    def pca(
+        self,
+        n_plot_samples: int,
+        X_gen,
+        z_test: np.ndarray,
+        z_gen: np.ndarray,
+        log=True,
+    ):
         X_gen = X_gen.cpu().numpy()
 
-        sample_ind_test = np.random.choice(range(self.X_test.shape[0]), size=n_plot_samples, replace=False)
-        sample_ind_gen = np.random.choice(range(X_gen.shape[0]), size=n_plot_samples, replace=False)
+        sample_ind_test = np.random.choice(
+            range(self.X_test.shape[0]), size=n_plot_samples, replace=False
+        )
+        sample_ind_gen = np.random.choice(
+            range(X_gen.shape[0]), size=n_plot_samples, replace=False
+        )
 
         # PCA: data space
         pca = PCA(n_components=2)
@@ -160,13 +217,17 @@ class Evaluation(object):
 
         plt.figure(figsize=(4, 4))
         # plt.title("PCA in the data space")
-        plt.scatter(X_embedded_test[:, 0], X_embedded_test[:, 1], alpha=0.1, label='test')
-        plt.scatter(X_embedded_gen[:, 0], X_embedded_gen[:, 1], alpha=0.1, label='gen')
+        plt.scatter(
+            X_embedded_test[:, 0], X_embedded_test[:, 1], alpha=0.1, label="test"
+        )
+        plt.scatter(X_embedded_gen[:, 0], X_embedded_gen[:, 1], alpha=0.1, label="gen")
         plt.legend()
         plt.tight_layout()
-        wandb.log({"PCA-data_space": wandb.Image(plt)})
-        plt.close()
-
+        if log:
+            wandb.log({"PCA-data_space": wandb.Image(plt)})
+            plt.close()
+        else:
+            plt.show()
         # PCA: latent space
         pca = PCA(n_components=2)
         z_embedded_test = pca.fit_transform(z_test.squeeze()[sample_ind_test].squeeze())
@@ -174,39 +235,64 @@ class Evaluation(object):
 
         plt.figure(figsize=(4, 4))
         # plt.title("PCA in the representation space by the trained encoder");
-        plt.scatter(z_embedded_test[:, 0], z_embedded_test[:, 1], alpha=0.1, label='test')
-        plt.scatter(z_embedded_gen[:, 0], z_embedded_gen[:, 1], alpha=0.1, label='gen')
+        plt.scatter(
+            z_embedded_test[:, 0], z_embedded_test[:, 1], alpha=0.3, label="test"
+        )
+        plt.scatter(z_embedded_gen[:, 0], z_embedded_gen[:, 1], alpha=0.3, label="gen")
         plt.legend()
         plt.tight_layout()
-        wandb.log({"PCA-latent_space": wandb.Image(plt)})
-        plt.close()
+        if log:
+            wandb.log({"PCA-latent_space": wandb.Image(plt)})
+            plt.close()
+        else:
+            plt.show()
 
-    def log_tsne(self, n_plot_samples: int, X_gen, z_test: np.ndarray, z_gen: np.ndarray):
+    def tsne(
+        self,
+        n_plot_samples: int,
+        X_gen,
+        z_test: np.ndarray,
+        z_gen: np.ndarray,
+        log=True,
+    ):
         X_gen = X_gen.cpu().numpy()
 
         sample_ind_test = np.random.randint(0, self.X_test.shape[0], n_plot_samples)
         sample_ind_gen = np.random.randint(0, X_gen.shape[0], n_plot_samples)
 
         # TNSE: data space
-        X = np.concatenate((self.X_test.squeeze()[sample_ind_test], X_gen.squeeze()[sample_ind_gen]), axis=0).squeeze()
-        labels = np.array(['C0'] * len(sample_ind_test) + ['C1'] * len(sample_ind_gen))
-        X_embedded = TSNE(n_components=2, learning_rate='auto', init='random').fit_transform(X)
+        X = np.concatenate(
+            (self.X_test.squeeze()[sample_ind_test], X_gen.squeeze()[sample_ind_gen]),
+            axis=0,
+        ).squeeze()
+        labels = np.array(["C0"] * len(sample_ind_test) + ["C1"] * len(sample_ind_gen))
+        X_embedded = TSNE(
+            n_components=2, learning_rate="auto", init="random"
+        ).fit_transform(X)
 
         plt.figure(figsize=(4, 4))
         plt.scatter(X_embedded[:, 0], X_embedded[:, 1], c=labels, alpha=0.1)
         # plt.legend()
         plt.tight_layout()
-        wandb.log({"TNSE-data_space": wandb.Image(plt)})
-        plt.close()
+        if log:
+            wandb.log({"TNSE-data_space": wandb.Image(plt)})
+            plt.close()
 
         # TNSE: latent space
-        Z = np.concatenate((z_test[sample_ind_test], z_gen[sample_ind_gen]), axis=0).squeeze()
-        labels = np.array(['C0'] * len(sample_ind_test) + ['C1'] * len(sample_ind_gen))
-        Z_embedded = TSNE(n_components=2, learning_rate='auto', init='random').fit_transform(Z)
+        Z = np.concatenate(
+            (z_test[sample_ind_test], z_gen[sample_ind_gen]), axis=0
+        ).squeeze()
+        labels = np.array(["C0"] * len(sample_ind_test) + ["C1"] * len(sample_ind_gen))
+        Z_embedded = TSNE(
+            n_components=2, learning_rate="auto", init="random"
+        ).fit_transform(Z)
 
         plt.figure(figsize=(4, 4))
         plt.scatter(Z_embedded[:, 0], Z_embedded[:, 1], c=labels, alpha=0.1)
         # plt.legend()
         plt.tight_layout()
-        wandb.log({"TSNE-latent_space": wandb.Image(plt)})
-        plt.close()
+        if log:
+            wandb.log({"TSNE-latent_space": wandb.Image(plt)})
+            plt.close()
+        else:
+            plt.show()
