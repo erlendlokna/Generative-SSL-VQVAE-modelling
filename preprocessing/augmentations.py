@@ -6,11 +6,11 @@ from scipy.ndimage import rotate, affine_transform
 
 
 class Augmenter(object):
-    def __init__(self, time_augs, timefreq_augs, aug_params, max_aug_methods, **kwargs):
+    def __init__(self, time_augs, timefreq_augs, aug_params, use_all_methods, **kwargs):
         self.time_augs = time_augs if time_augs is not None else []
         self.timefreq_augs = timefreq_augs if timefreq_augs is not None else []
 
-        self.max_aug_methods = max_aug_methods
+        self.use_all_method = use_all_methods
 
         self.time_augmenter = TimeAugmenter(**aug_params)
         self.timefreq_augmenter = TimeFreqAugmenter(**aug_params)
@@ -29,13 +29,18 @@ class Augmenter(object):
         X = input_timeseries.copy()
 
         # Randomly constructing a combination of augmentation methods
-        all_augs = self.time_augs + self.timefreq_augs
-        num_aug_methods = np.random.randint(1, self.max_aug_methods)
-        np.random.shuffle(all_augs)
-        picked_augs = all_augs[:num_aug_methods]
-
-        time_methods_to_apply = set(picked_augs).intersection(self.time_augs)
-        timefreq_methods_to_apply = set(picked_augs).intersection(self.timefreq_augs)
+        if self.use_all_method:
+            picked_augs = self.time_augs + self.timefreq_augs
+            time_methods_to_apply = self.time_augs
+            timefreq_methods_to_apply = self.timefreq_augs
+        else:
+            all_augs = self.time_augs + self.timefreq_augs
+            np.random.shuffle(all_augs)
+            picked_augs = all_augs[: np.random.randint(1, len(all_augs))]
+            time_methods_to_apply = set(picked_augs).intersection(self.time_augs)
+            timefreq_methods_to_apply = set(picked_augs).intersection(
+                self.timefreq_augs
+            )
 
         # Applying time augmentations
         X = self.time_augmenter.apply_augmentations(time_methods_to_apply, X)

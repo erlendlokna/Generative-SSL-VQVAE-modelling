@@ -41,7 +41,7 @@ VQVAE:
   perceptual_loss_weight: 0
 
 augmentations:
-  max_aug_methods: 2
+  use_all_methods: True
 
   time_augs:
     #- "noise"
@@ -50,8 +50,8 @@ augmentations:
     #- 'flip'
     - "noise_window"
   timefreq_augs:
-    - "random_masks"
-    #- 'block'
+    # "random_masks"
+    - "block"
     #- 'band'
     #- 'phase'
     #- 'rotation'

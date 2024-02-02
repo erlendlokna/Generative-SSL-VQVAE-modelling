@@ -3,8 +3,7 @@ import matplotlib.pyplot as plt
 
 from models.EncoderDecoder.encoder_decoder import VQVAEEncoder, VQVAEDecoder
 from models.VQ.vq import VectorQuantize
-from models.SSL.vicreg import VICReg
-from models.SSL.barlowtwins import BarlowTwins
+from models.SSL.ssl import SSL_wrapper
 
 from utils import (
     compute_downsample_rate,
@@ -42,8 +41,6 @@ class Exp_SSL_VQVAE(ExpBase):
     def __init__(
         self,
         input_length,
-        non_aug_test_data_loader,
-        non_aug_train_data_loader,
         config: dict,
         n_train_samples: int,
     ):
@@ -87,21 +84,7 @@ class Exp_SSL_VQVAE(ExpBase):
         )
 
         # latent SSL objective
-        SSL_method_choice = config["SSL"]["method_choice"]
-        assert SSL_method_choice in [
-            "barlow_twins",
-            "vicreg",
-        ], f"SSL method {SSL_method_choice} not in choices ['barlow_twins', 'vicreg']"
-        self.SSL_method = (
-            BarlowTwins(config)
-            if SSL_method_choice == "barlow_twins"
-            else VICReg(config)
-        )  # can be modified in future
-        self.SSL_loss_weighting = config["SSL"]["weighting"]
-
-        # save these for representation tests during training
-        self.train_data_loader = non_aug_train_data_loader
-        self.test_data_loader = non_aug_test_data_loader
+        self.SSL_method = SSL_wrapper(dim, config)
 
     def forward(self, batch, training=True):
         """
@@ -215,7 +198,8 @@ class Exp_SSL_VQVAE(ExpBase):
         )
 
         # total loss:
-        loss = vqvae_loss + SSL_loss * self.SSL_loss_weighting
+        SSL_loss_weighting = self.SSL_method.loss_weighting
+        loss = vqvae_loss + SSL_loss * SSL_loss_weighting
 
         # lr scheduler
         sch = self.lr_schedulers()
@@ -230,7 +214,7 @@ class Exp_SSL_VQVAE(ExpBase):
             #'commit_loss': vq_loss, #?
             "perplexity": perplexity,
             "perceptual": recons_loss["perceptual"],
-            self.SSL_method.name + "_loss": SSL_loss * self.SSL_loss_weighting,
+            self.SSL_method.name + "_loss": SSL_loss * SSL_loss_weighting,
         }
 
         wandb.log(loss_hist)
@@ -311,67 +295,3 @@ class Exp_SSL_VQVAE(ExpBase):
 
         detach_the_unnecessary(loss_hist)
         return loss_hist
-
-    # ---- Representation testing ------
-    def on_train_epoch_end(self):
-        if self.config["representations"]["test_stage1"]:
-            tested = False
-            if self.current_epoch % 300 == 0 and self.current_epoch != 0:
-                wandb.log(
-                    test_model_representations(
-                        encode_data(
-                            self.train_data_loader,
-                            self.encoder,
-                            self.config["VQVAE"]["n_fft"],
-                            self.vq_model,
-                        ),
-                        encode_data(
-                            self.test_data_loader,
-                            self.encoder,
-                            self.config["VQVAE"]["n_fft"],
-                            self.vq_model,
-                        ),
-                    )
-                )
-                tested = True
-
-            if (
-                self.current_epoch
-                == self.config["trainer_params"]["max_epochs"]["ssl_vqvae"] - 1
-                and tested == False
-            ):
-                wandb.log(
-                    test_model_representations(
-                        encode_data(
-                            self.train_data_loader,
-                            self.encoder,
-                            self.config["VQVAE"]["n_fft"],
-                            self.vq_model,
-                        ),
-                        encode_data(
-                            self.test_data_loader,
-                            self.encoder,
-                            self.config["VQVAE"]["n_fft"],
-                            self.vq_model,
-                        ),
-                    )
-                )
-
-    def on_train_epoch_start(self):
-        if self.current_epoch == 0 and self.config["representations"]["test_stage1"]:
-            wandb.log(
-                test_model_representations(
-                    encode_data(
-                        self.train_data_loader,
-                        self.encoder,
-                        self.config["VQVAE"]["n_fft"],
-                        self.vq_model,
-                    ),
-                    encode_data(
-                        self.test_data_loader,
-                        self.encoder,
-                        self.config["VQVAE"]["n_fft"],
-                        self.vq_model,
-                    ),
-                )
-            )
