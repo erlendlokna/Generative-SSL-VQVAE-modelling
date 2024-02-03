@@ -1,5 +1,5 @@
 dataset:
-  dataset_name: "ECG5000"
+  dataset_name: "ElectricDevices"
   in_channels: 1
   data_scaling: True
   batch_sizes:
@@ -16,7 +16,6 @@ trainer_params:
     - 0
   max_epochs:
     stage1: 2000
-    stage1_ssl: 2000
     stage2: 10000
 
 encoder:
@@ -31,6 +30,7 @@ decoder:
   n_resnet_blocks: 4
 
 VQVAE:
+  SSL: True
   n_fft: 8
   codebook:
     size: 32
@@ -40,22 +40,60 @@ VQVAE:
   emb_dropout: 0.
   perceptual_loss_weight: 0
 
+MaskGIT:
+  SSL: False
+
+  choice_temperature: 4 # for masking
+  stochastic_sampling: 1 # from (Lee et al., 2022)
+
+  T: 10
+  prior_model:
+    hidden_dim: 256
+    n_layers: 4
+    heads: 2
+    ff_mult: 1
+    use_rmsnorm: True
+    p_unconditional: 0.2
+  ESS:
+    use: False
+    error_ratio_ma_rate: 0.3
+
+class_guidance:
+  guidance_scale: 1.
+
+SSL:
+  #method_choice: 'vicreg'
+  method_choice: "barlow_twins"
+  weighting: 1
+
+  barlow_twins:
+    proj_hid: 4096 #projector hidden layer size
+    proj_out: 4096 #projector output layer size
+    lambda: 0.005
+
+  vicreg:
+    proj_hid: 4096 #projector hidden layer size
+    proj_out: 4096 #projector output layer size
+    lambda: 25 # sim_loss
+    mu: 25 # var_loss
+    nu: 1 # cov_loss
+
 augmentations:
   use_all_methods: True
 
   time_augs:
     #- "noise"
     #- 'amplitude_resize'
-    - "slope"
+    #- "slope"
     #- 'flip'
-    - "noise_window"
+    #- "noise_window"
   timefreq_augs:
-    # "random_masks"
-    - "block"
+    - "random_masks"
+    #- "block"
     #- 'band'
     #- 'phase'
     #- 'rotation'
-    - "gaussian"
+    #- "gaussian"
     #- 'shear'
     - "scale"
 
@@ -86,43 +124,3 @@ augmentations:
     #Shear aug:
     max_shear_x: 0.01
     max_shear_y: 0.01
-
-representations:
-  test_stage1: False
-  test_stage2: False
-
-SSL:
-  #method_choice: 'vicreg'
-  method_choice: "barlow_twins"
-  weighting: 1
-
-  barlow_twins:
-    proj_hid: 4096 #projector hidden layer size
-    proj_out: 4096 #projector output layer size
-    lambda: 0.005
-
-  vicreg:
-    proj_hid: 4096 #projector hidden layer size
-    proj_out: 4096 #projector output layer size
-    lambda: 25 # sim_loss
-    mu: 25 # var_loss
-    nu: 1 # cov_loss
-
-MaskGIT:
-  choice_temperature: 4 # for masking
-
-  stochastic_sampling: 1 # from (Lee et al., 2022)
-  T: 10
-  prior_model:
-    hidden_dim: 256
-    n_layers: 4
-    heads: 2
-    ff_mult: 1
-    use_rmsnorm: True
-    p_unconditional: 0.2
-  ESS:
-    use: False
-    error_ratio_ma_rate: 0.3
-
-class_guidance:
-  guidance_scale: 1.

@@ -29,8 +29,6 @@ class Exp_VQVAE(ExpBase):
     def __init__(
         self,
         input_length,
-        test_data_loader,
-        train_data_loader,
         config: dict,
         n_train_samples: int,
     ):
@@ -79,9 +77,6 @@ class Exp_VQVAE(ExpBase):
             )
             self.fcn.eval()
             freeze(self.fcn)
-
-        self.train_data_loader = train_data_loader
-        self.test_data_loader = test_data_loader
 
     def forward(self, batch):
         x, y = batch
@@ -234,67 +229,3 @@ class Exp_VQVAE(ExpBase):
 
         detach_the_unnecessary(loss_hist)
         return loss_hist
-
-    # ---- Representation testing ------
-    def on_train_epoch_end(self):
-        if self.config["representations"]["test_stage1"]:
-            tested = False
-            if self.current_epoch % 300 == 0 and self.current_epoch != 0:
-                wandb.log(
-                    test_model_representations(
-                        encode_data(
-                            self.train_data_loader,
-                            self.encoder,
-                            self.config["VQVAE"]["n_fft"],
-                            self.vq_model,
-                        ),
-                        encode_data(
-                            self.test_data_loader,
-                            self.encoder,
-                            self.config["VQVAE"]["n_fft"],
-                            self.vq_model,
-                        ),
-                    )
-                )
-                tested = True
-
-            if (
-                self.current_epoch
-                == self.config["trainer_params"]["max_epochs"]["vqvae"] - 1
-                and tested == False
-            ):
-                wandb.log(
-                    test_model_representations(
-                        encode_data(
-                            self.train_data_loader,
-                            self.encoder,
-                            self.config["VQVAE"]["n_fft"],
-                            self.vq_model,
-                        ),
-                        encode_data(
-                            self.test_data_loader,
-                            self.encoder,
-                            self.config["VQVAE"]["n_fft"],
-                            self.vq_model,
-                        ),
-                    )
-                )
-
-    def on_train_epoch_start(self):
-        if self.current_epoch == 0 and self.config["representations"]["test_stage1"]:
-            wandb.log(
-                test_model_representations(
-                    encode_data(
-                        self.train_data_loader,
-                        self.encoder,
-                        self.config["VQVAE"]["n_fft"],
-                        self.vq_model,
-                    ),
-                    encode_data(
-                        self.test_data_loader,
-                        self.encoder,
-                        self.config["VQVAE"]["n_fft"],
-                        self.vq_model,
-                    ),
-                )
-            )

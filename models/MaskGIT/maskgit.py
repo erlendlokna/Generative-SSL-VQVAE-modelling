@@ -36,7 +36,6 @@ class MaskGIT(nn.Module):
 
     def __init__(
         self,
-        dataset_name: str,
         input_length: int,
         choice_temperature: int,
         stochastic_sampling: int,
@@ -53,6 +52,7 @@ class MaskGIT(nn.Module):
 
         self.mask_token_ids = config["VQVAE"]["codebook"]["size"]
         self.gamma = self.gamma_func("cosine")
+        dataset_name = config["dataset"]["dataset_name"]
 
         # define encoder, decoder, vq_models
         dim = config["encoder"]["dim"]
@@ -552,9 +552,9 @@ class MaskGIT(nn.Module):
         confidence_scores = torch.zeros_like(s).float()  # (b n)
         for n in range(confidence_scores.shape[-1]):
             s_m = copy.deepcopy(s)  # (b n)
-            s_m[
-                :, n
-            ] = mask_token_ids  # (b n); masking the n-th token to measure the confidence score for that token.
+            s_m[:, n] = (
+                mask_token_ids  # (b n); masking the n-th token to measure the confidence score for that token.
+            )
             logits = transformer(s_m, class_condition=class_condition)  # (b n K)
             logits = torch.nn.functional.softmax(logits, dim=-1)  # (b n K)
 

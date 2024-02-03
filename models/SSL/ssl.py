@@ -89,11 +89,9 @@ class BarlowTwins(nn.Module):
         return loss
 
     def forward(self, z1, z2):
-        z1_flatten = z1.view(-1)
-        z2_flatten = z2.view(-1)
 
-        z1_projected_norm = self._batch_dim_wise_normalize_z(self.projector(z1_flatten))
-        z2_projected_norm = self._batch_dim_wise_normalize_z(self.projector(z2_flatten))
+        z1_projected_norm = self._batch_dim_wise_normalize_z(self.projector(z1))
+        z2_projected_norm = self._batch_dim_wise_normalize_z(self.projector(z2))
 
         loss = self.loss_function(z1_projected_norm, z2_projected_norm)
 
