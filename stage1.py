@@ -12,7 +12,12 @@ from experiments.exp_vqvae import Exp_VQVAE
 
 from preprocessing.preprocess_ucr import UCRDatasetImporter
 from preprocessing.data_pipeline import build_data_pipeline
-from utils import load_yaml_param_settings, save_model, get_root_dir
+from utils import (
+    load_yaml_param_settings,
+    save_model,
+    get_root_dir,
+    ssl_config_filename,
+)
 import torch
 
 
@@ -35,7 +40,7 @@ def load_args():
 
 
 def train_stage1(
-    SSL: bool,
+    ssl_stage1: bool,
     config: dict,
     train_data_loader: DataLoader,
     test_data_loader: DataLoader,
@@ -54,7 +59,7 @@ def train_stage1(
 
     input_length = train_data_loader.dataset.X.shape[-1]
 
-    if SSL:
+    if ssl_stage1:
         train_exp = Exp_SSL_VQVAE(
             input_length,
             config=config,
@@ -107,17 +112,11 @@ def train_stage1(
     wandb.finish()
 
     # Save the models
-    prefix = (
-        ""
-        if not SSL
-        else f"{config['SSL']['method_choice']}_{config['SSL']['weighting']}_"
-    )
-
     save_model(
         {
-            f"{prefix}encoder": train_exp.encoder,
-            f"{prefix}decoder": train_exp.decoder,
-            f"{prefix}vq_model": train_exp.vq_model,
+            ssl_config_filename(config, "encoder"): train_exp.encoder,
+            ssl_config_filename(config, "decoder"): train_exp.decoder,
+            ssl_config_filename(config, "vqmodel"): train_exp.vq_model,
         },
         id=config["dataset"]["dataset_name"],
     )
@@ -128,10 +127,13 @@ if __name__ == "__main__":
     args = load_args()
     config = load_yaml_param_settings(args.config)
 
-    use_ssl = config["VQVAE"]["SSL"]
-
     dataset_importer = UCRDatasetImporter(**config["dataset"])
     batch_size = config["dataset"]["batch_sizes"]["stage1"]
+
+    stage1_ssl_method = config["SSL"]["stage1_method"]
+    use_ssl = stage1_ssl_method != ""
+
+    print(f"Creating {'augmented' if use_ssl else''} dataset/s...")
 
     train_data_loader = build_data_pipeline(
         batch_size, dataset_importer, config, augment=use_ssl, kind="train"
@@ -141,8 +143,8 @@ if __name__ == "__main__":
     )
 
     # Train VQVAE without validation
+    print("Starting training...")
     train_stage1(
-        SSL=use_ssl,
         config=config,
         train_data_loader=train_data_loader,
         test_data_loader=test_data_loader,

@@ -22,7 +22,11 @@ from models.MaskGIT.sample import unconditional_sample, conditional_sample
 from supervised_FCN.example_pretrained_model_loading import load_pretrained_FCN
 from supervised_FCN.example_compute_FID import calculate_fid
 from supervised_FCN.example_compute_IS import calculate_inception_score
-from utils import time_to_timefreq, timefreq_to_time
+from utils import (
+    time_to_timefreq,
+    timefreq_to_time,
+    ssl_config_filename,
+)
 
 
 class Evaluation(object):
@@ -71,7 +75,6 @@ class Evaluation(object):
 
         # build
         maskgit = MaskGIT(
-            self.subset_dataset_name,
             input_length,
             **self.config["MaskGIT"],
             config=self.config,
@@ -79,7 +82,11 @@ class Evaluation(object):
         ).to(self.device)
 
         # load
-        fname = f"maskgit-{self.subset_dataset_name}.ckpt"
+        fname = (
+            ssl_config_filename(self.config, "maskgit")
+            + f"-{self.config['dataset']['dataset_name']}"
+            + ".ckpt"
+        )
         try:
             ckpt_fname = os.path.join("saved_models", fname)
             maskgit.load_state_dict(torch.load(ckpt_fname), strict=False)

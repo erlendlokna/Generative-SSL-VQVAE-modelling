@@ -7,6 +7,7 @@ import torch.nn.functional as F
 
 from experiments.exp_base import ExpBase, detach_the_unnecessary
 from models.MaskGIT.maskgit import MaskGIT
+from evaluation.evaluation import Evaluation
 
 
 class ExpMaskGIT(ExpBase):
@@ -71,7 +72,6 @@ class ExpMaskGIT(ExpBase):
             plt.close()
 
         wandb.log(loss_hist)
-
         detach_the_unnecessary(loss_hist)
         return loss_hist
 

@@ -35,8 +35,8 @@ class Exp_VQVAE(ExpBase):
         super().__init__()
 
         self.config = config
-        self.T_max = config["trainer_params"]["max_epochs"]["vqvae"] * (
-            np.ceil(n_train_samples / config["dataset"]["batch_sizes"]["vqvae"]) + 1
+        self.T_max = config["trainer_params"]["max_epochs"]["stage1"] * (
+            np.ceil(n_train_samples / config["dataset"]["batch_sizes"]["stage1"]) + 1
         )
 
         self.n_fft = config["VQVAE"]["n_fft"]
@@ -189,18 +189,18 @@ class Exp_VQVAE(ExpBase):
             [
                 {
                     "params": self.encoder.parameters(),
-                    "lr": self.config["model_params"]["LR"],
+                    "lr": self.config["exp_params"]["LR"],
                 },
                 {
                     "params": self.decoder.parameters(),
-                    "lr": self.config["model_params"]["LR"],
+                    "lr": self.config["exp_params"]["LR"],
                 },
                 {
                     "params": self.vq_model.parameters(),
-                    "lr": self.config["model_params"]["LR"],
+                    "lr": self.config["exp_params"]["LR"],
                 },
             ],
-            weight_decay=self.config["model_params"]["weight_decay"],
+            weight_decay=self.config["exp_params"]["weight_decay"],
         )
 
         return {"optimizer": opt, "lr_scheduler": CosineAnnealingLR(opt, self.T_max)}

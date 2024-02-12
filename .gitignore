@@ -1,3 +1,5 @@
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -10,7 +12,7 @@ __pycache__/
 data/UCRArchive_2018
 data/UCRArchive_2018/
 wandb/
-#saved_models/
+saved_models/
 notes/.obsidian
 
 # Distribution / packaging

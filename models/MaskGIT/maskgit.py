@@ -13,7 +13,7 @@ import torch
 from einops import repeat, rearrange
 from typing import Callable
 
-from models.MaskGIT.bidirectional_transformer import BidirectionalTransformer
+from models.MaskGIT.bidirectional_transformers import BidirectionalTransformer
 from models.EncoderDecoder.encoder_decoder import VQVAEEncoder, VQVAEDecoder
 from models.VQ.vq import VectorQuantize
 
@@ -24,6 +24,7 @@ from utils import (
     timefreq_to_time,
     time_to_timefreq,
     quantize,
+    ssl_config_filename,
 )
 
 
@@ -72,28 +73,30 @@ class MaskGIT(nn.Module):
         self.vq_model = VectorQuantize(
             dim, config["VQVAE"]["codebook"]["size"], **config["VQVAE"]
         )
-
         # load trained models for encoder, decoder, and vq_models
-        SSL_method = f"{config['SSL']['method_choice']}_{config['SSL']['weighting']}"
-
+        ssl_method = (
+            config["VQVAE"]["ssl_method"]
+            if config["VQVAE"]["ssl_method"] != "None"
+            else ""
+        )
         self.load(
             self.encoder,
             get_root_dir().joinpath("saved_models"),
-            f"{SSL_method}_encoder-{dataset_name}.ckpt",
+            f"{ssl_config_filename(config, 'encoder')}-{dataset_name}.ckpt",
         )
-        print("encoder loaded")
+        print(f"{ssl_method} encoder loaded")
         self.load(
             self.decoder,
             get_root_dir().joinpath("saved_models"),
-            f"{SSL_method}_decoder-{dataset_name}.ckpt",
+            f"{ssl_config_filename(config, 'decoder')}-{dataset_name}.ckpt",
         )
-        print("decoder loaded")
+        print(f"{ssl_method} decoder loaded")
         self.load(
             self.vq_model,
             get_root_dir().joinpath("saved_models"),
-            f"{SSL_method}_vq_model-{dataset_name}.ckpt",
+            f"{ssl_config_filename(config, 'vqmodel')}-{dataset_name}.ckpt",
         )
-        print("vq_model loaded")
+        print(f"{ssl_method} vqmodel loaded")
 
         # freeze the models for encoder, decoder, and vq_model
         freeze(self.encoder)

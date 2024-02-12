@@ -17,11 +17,16 @@ from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.loggers import WandbLogger
 from preprocessing.preprocess_ucr import UCRDatasetImporter
 from experiments.exp_maskgit import ExpMaskGIT
-from experiments.exp_ssl_maskgit import Exp_SSL_MaskGIT
+from experiments.exp_ssl_maskgit import ExpSSLMaskGIT
 from evaluation.evaluation import Evaluation
 
 # from evaluation.evaluation import Evaluation
-from utils import get_root_dir, load_yaml_param_settings, save_model
+from utils import (
+    get_root_dir,
+    load_yaml_param_settings,
+    save_model,
+    ssl_config_filename,
+)
 
 
 def load_args():
@@ -40,11 +45,11 @@ def load_args():
 
 
 def train_stage2(
-    SSL: bool,
+    ssl_maskgit: bool,
     config: dict,
     train_data_loader: DataLoader,
     test_data_loader: DataLoader,
-    gpu_device_idx,
+    gpu_device_idx: int,
     do_validate: bool,
 ):
     """
@@ -52,12 +57,11 @@ def train_stage2(
     """
     project_name = "SSL_VQVAE-stage2"
 
-    # fit
     n_classes = len(np.unique(train_data_loader.dataset.Y))
     input_length = train_data_loader.dataset.X.shape[-1]
-
-    if SSL:
-        train_exp = Exp_SSL_MaskGIT(
+    # initiate model:
+    if ssl_maskgit:
+        train_exp = ExpSSLMaskGIT(
             input_length, config, len(train_data_loader.dataset), n_classes
         )
     else:
@@ -91,15 +95,10 @@ def train_stage2(
 
     wandb.log({"n_trainable_params:": n_trainable_params})
 
-    prefix = (
-        ""
-        if not SSL
-        else f"{config['SSL']['method_choice']}_{config['SSL']['weighting']}_"
-    )
-
     print("saving the model...")
     save_model(
-        {f"{prefix}maskgit": train_exp.maskgit}, id=config["dataset"]["dataset_name"]
+        {ssl_config_filename(config, "maskgit"): train_exp.maskgit},
+        id=config["dataset"]["dataset_name"],
     )
 
     # test
@@ -132,21 +131,23 @@ if __name__ == "__main__":
     config = load_yaml_param_settings(args.config)
 
     dataset_importer = UCRDatasetImporter(**config["dataset"])
-    batch_size = config["dataset"]["batch_sizes"]["stage1"]
-    train_data_loader, test_data_loader = [
-        build_data_pipeline(batch_size, dataset_importer, config, kind)
-        for kind in ["train", "test"]
-    ]
+    batch_size = config["dataset"]["batch_sizes"]["stage2"]
 
-    use_ssl = config["MaskGIT"]["SSL"]
+    train_data_loader = build_data_pipeline(
+        batch_size, dataset_importer, config, augment=False, kind="train"
+    )
+    test_data_loader = build_data_pipeline(
+        batch_size, dataset_importer, config, augment=False, kind="test"
+    )
 
     # train
-    print("starting training")
+    ssl_maskgit = True
+    print(f"starting training stage 2 {'using SSL' if ssl_maskgit else''}")
     train_stage2(
-        use_ssl,
+        ssl_maskgit,
         config,
         train_data_loader,
         test_data_loader,
         args.gpu_device_idx,
-        do_validate=False,
+        do_validate=True,
     )

@@ -3,7 +3,7 @@ import numpy as np
 from torch.utils.data import Dataset
 from sklearn.preprocessing import LabelEncoder
 import math
-from utils import get_root_dir, download_ucr_datasets
+from utils import get_root_dir
 from preprocessing.augmentations import Augmenter
 import tarfile
 import os
@@ -148,15 +148,14 @@ class AugUCRDataset(Dataset):
     def getitem_default(self, idx):
         x, y = self.X[idx, :], self.Y[idx, :]
 
-        subx_view1 = self.augmenter.augment(x).numpy()
-        subx_view2 = self.augmenter.augment(x).numpy()
+        x_augmented = self.augmenter.augment(x).numpy()
 
-        subx_view1 = subx_view1.reshape(1, -1)  # (1 x F)
-        subx_view2 = subx_view2.reshape(1, -1)
+        x = x.reshape(1, -1)  # (1 x F)
+        x_augmented = x_augmented.reshape(1, -1)
 
-        subx_view1, subx_view2 = self._assign_float32(subx_view1, subx_view2)
+        x, x_augmented = self._assign_float32(x, x_augmented)
 
-        return [subx_view1, subx_view2], y
+        return [x, x_augmented], y
 
     def __getitem__(self, idx):
         return self.getitem_default(idx)

@@ -3,6 +3,7 @@ import numpy as np
 import torch
 import random
 from scipy.ndimage import rotate, affine_transform
+import torch.nn.functional as F
 
 
 class Augmenter(object):
@@ -220,7 +221,7 @@ class TimeFreqAugmenter(object):
         gaus_std=0.01,
         num_bands_to_remove=1,
         band_scale_factor=0.1,
-        phase_max_change=np.pi / 4,
+        phase_max_change=np.pi / 3,
         max_shear_x=0.1,
         max_shear_y=0.1,
         **kwargs,
@@ -274,26 +275,28 @@ class TimeFreqAugmenter(object):
     def stft(self, x):
         if not isinstance(x, torch.Tensor):
             x = torch.tensor(x.copy(), dtype=torch.float32)
-        return torch.stft(x, n_fft=self.n_fft, return_complex=True, onesided=False)
+
+        window = torch.hann_window(self.n_fft)
+        return torch.stft(
+            x, n_fft=self.n_fft, window=window, return_complex=True, onesided=False
+        )
 
     def istft(self, u, original_length):
         if not isinstance(u, torch.Tensor):
             u = torch.tensor(u.copy(), dtype=torch.float32)
 
-        # Convert 1-dimensional tensor to 2-dimensional (if needed)
-        if len(u.shape) == 1:
-            u = u.reshape(1, -1)
+        if u.ndim == 1:
+            u = u.unsqueeze(0)
 
-        istft_output = torch.istft(
-            u, n_fft=self.n_fft, return_complex=False, onesided=False
-        )
+        window = torch.hann_window(self.n_fft)
+        istft_output = torch.istft(u, n_fft=self.n_fft, window=window, onesided=False)
 
-        # Trim or zero-pad the ISTFT output to match the original length
-        if len(istft_output) < original_length:
-            pad_length = original_length - len(istft_output)
-            istft_output = torch.cat((istft_output, torch.zeros(1, pad_length)), dim=-1)
-        elif len(istft_output) > original_length:
-            istft_output = istft_output[:, :original_length]
+        # Adjust the length of the output
+        if istft_output.shape[-1] < original_length:
+            pad_length = original_length - istft_output.shape[-1]
+            istft_output = F.pad(istft_output, (0, pad_length))
+        elif istft_output.shape[-1] > original_length:
+            istft_output = istft_output[..., :original_length]
 
         return istft_output
 
