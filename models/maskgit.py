@@ -13,9 +13,9 @@ import torch
 from einops import repeat, rearrange
 from typing import Callable
 
-from models.MaskGIT.bidirectional_transformers import IntegratedBidirectionalTransformer
-from models.EncoderDecoder.encoder_decoder import VQVAEEncoder, VQVAEDecoder
-from models.VQ.vq import VectorQuantize
+from models.transformers import BidirectionalTransformer
+from models.encoder_decoder import VQVAEEncoder, VQVAEDecoder
+from models.vq import VectorQuantize
 
 from utils import (
     compute_downsample_rate,
@@ -28,7 +28,7 @@ from utils import (
 )
 
 
-class SSLMaskGIT(nn.Module):
+class MaskGIT(nn.Module):
     """
     references:
         1. https://github.com/ML4ITS/TimeVQVAE/blob/main/generators/maskgit.py'
@@ -74,26 +74,29 @@ class SSLMaskGIT(nn.Module):
             dim, config["VQVAE"]["codebook"]["size"], **config["VQVAE"]
         )
         # load trained models for encoder, decoder, and vq_models
-        stage1_ssl_method = config["SSL"]["stage1_method"]
-
+        ssl_method = (
+            config["VQVAE"]["ssl_method"]
+            if config["VQVAE"]["ssl_method"] != "None"
+            else ""
+        )
         self.load(
             self.encoder,
             get_root_dir().joinpath("saved_models"),
             f"{ssl_config_filename(config, 'encoder')}-{dataset_name}.ckpt",
         )
-        print(f"{stage1_ssl_method} encoder loaded")
+        print(f"{ssl_method} encoder loaded")
         self.load(
             self.decoder,
             get_root_dir().joinpath("saved_models"),
             f"{ssl_config_filename(config, 'decoder')}-{dataset_name}.ckpt",
         )
-        print(f"{stage1_ssl_method} decoder loaded")
+        print(f"{ssl_method} decoder loaded")
         self.load(
             self.vq_model,
             get_root_dir().joinpath("saved_models"),
             f"{ssl_config_filename(config, 'vqmodel')}-{dataset_name}.ckpt",
         )
-        print(f"{stage1_ssl_method} vqmodel loaded")
+        print(f"{ssl_method} vqmodel loaded")
 
         # freeze the models for encoder, decoder, and vq_model
         freeze(self.encoder)
@@ -115,11 +118,11 @@ class SSLMaskGIT(nn.Module):
         # pretrained discrete tokens
         embed = nn.Parameter(copy.deepcopy(self.vq_model._codebook.embed))
 
-        self.integrated_transformer = IntegratedBidirectionalTransformer(
+        self.transformer = BidirectionalTransformer(
             self.num_tokens,
             config["VQVAE"]["codebook"]["size"],
             config["VQVAE"]["codebook"]["dim"],
-            **config["SSLMaskGIT"]["prior_model"],
+            **config["MaskGIT"]["prior_model"],
             n_classes=n_classes,
             pretrained_tok_emb=embed,
         )
@@ -153,51 +156,37 @@ class SSLMaskGIT(nn.Module):
         )  # (b c h w), (b (h w) h), ...
         return z_q, indices
 
-    def forward(self, x, y, return_summaries: bool = False):
+    def forward(self, x, y):
         """
         x: (B, C, L)
         y: (B, 1)
+        straight from [https://github.com/dome272/MaskGIT-pytorch/blob/main/transformer.py]
         """
         device = x.device
         _, s = self.encode_to_z_q(x, self.encoder, self.vq_model)  # (b n)
 
-        # --- Creating Masked Tokens ---
-        # randomly sample two 't' values
-        t1 = np.random.uniform(0, 1)
-        t2 = np.random.uniform(0, 1)
+        # randomly sample `t`
+        t = np.random.uniform(0, 1)
 
-        n_masks1 = math.floor(self.gamma(t1) * s.shape[1])
-        n_masks2 = math.floor(self.gamma(t2) * s.shape[1])
+        # create masks
+        n_masks = math.floor(self.gamma(t) * s.shape[1])
+        rand = torch.rand(s.shape, device=device)  # (b n)
+        mask = torch.zeros(s.shape, dtype=torch.bool, device=device)
+        mask.scatter_(dim=1, index=rand.topk(n_masks, dim=1).indices, value=True)
 
-        rand1 = torch.rand(s.shape, device=device)  # (b n)
-        rand2 = torch.rand(s.shape, device=device)  # (b n)
-
-        mask1 = torch.zeros(s.shape, dtype=torch.bool, device=device)
-        mask2 = torch.zeros(s.shape, dtype=torch.bool, device=device)
-
-        mask1.scatter_(dim=1, index=rand1.topk(n_masks1, dim=1).indices, value=True)
-        mask2.scatter_(dim=1, index=rand2.topk(n_masks2, dim=1).indices, value=True)
-
-        # create masked tokens
+        # masked tokens
         masked_indices = self.mask_token_ids * torch.ones_like(
             s, device=device
         )  # (b n)
+        s_M = mask * s + (~mask) * masked_indices  # (b n); `~` reverses bool-typed data
 
-        s_M1 = mask1 * s + (~mask1) * masked_indices  # (b n)
-        s_M2 = mask2 * s + (~mask2) * masked_indices  # (b n)
+        # prediction
+        logits = self.transformer(
+            s_M.detach(), class_condition=y
+        )  # (b n codebook_size)
+        target = s  # (b n)
 
-        # --- Encode-Decode transformers ---
-        logits1, summary1 = self.integrated_transformer(s_M1, y, return_summary=True)
-        logits2, summary2 = self.integrated_transformer(s_M2, y, return_summary=True)
-
-        logits = [logits1, logits2]
-        summaries = [summary1, summary2]
-        target = s
-
-        if return_summaries:
-            return logits, summaries, target
-        else:
-            return logits, target
+        return logits, target
 
     def gamma_func(self, mode="cosine"):
         if mode == "linear":
@@ -250,7 +239,7 @@ class SSLMaskGIT(nn.Module):
         masking = masking.bool()
         return masking
 
-    def sample(
+    def sample_good(
         self,
         s: torch.Tensor,
         unknown_number_in_the_beginning,
@@ -260,11 +249,11 @@ class SSLMaskGIT(nn.Module):
         device,
     ):
         for t in range(self.T):
-            logits = self.integrated_transformer(
+            logits = self.transformer(
                 s, class_condition=class_condition
             )  # (b n codebook_size) == (b n K)
             if isinstance(class_condition, torch.Tensor):
-                logits_null = self.integrated_transformer(s, class_condition=None)
+                logits_null = self.transformer(s, class_condition=None)
                 logits = logits_null + guidance_scale * (logits - logits_null)
 
             sampled_ids = torch.distributions.categorical.Categorical(
@@ -309,20 +298,6 @@ class SSLMaskGIT(nn.Module):
             # Masks tokens with lower confidence.
             s = torch.where(masking, self.mask_token_ids, sampled_ids)  # (b n)
 
-        # use ESS (Enhanced Sampling Scheme)
-        if self.config["MaskGIT"]["ESS"]["use"]:
-            t_star, s_star = self.critical_reverse_sampling(
-                s, unknown_number_in_the_beginning, class_condition
-            )
-            s = self.iterative_decoding_with_self_token_critic(
-                t_star,
-                s_star,
-                unknown_number_in_the_beginning,
-                class_condition,
-                guidance_scale,
-                device,
-            )
-
         return s
 
     @torch.no_grad()
@@ -354,7 +329,7 @@ class SSLMaskGIT(nn.Module):
             else None
         )  # (b 1)
 
-        s = self.sample(
+        s = self.sample_good(
             s,
             unknown_number_in_the_beginning,
             class_condition,
@@ -383,9 +358,6 @@ class SSLMaskGIT(nn.Module):
 
         quantize = rearrange(quantize, "b n c -> b c n")  # (b c n) == (b c (h w))
 
-        # print("quantize.shape before reshaping:", quantize.shape)
-        # print(self.H_prime, self.W_prime)
-
         quantize = rearrange(
             quantize, "b c (h w) -> b c h w", h=self.H_prime, w=self.W_prime
         )
@@ -412,7 +384,7 @@ class SSLMaskGIT(nn.Module):
         """
 
         mask_token_ids = self.mask_token_ids
-        transformer = self.integrated_transformer
+        transformer = self.transformer
         vq_model = self.vq_model
 
         # compute the confidence scores for s_T
@@ -516,7 +488,7 @@ class SSLMaskGIT(nn.Module):
         device,
     ):
         mask_token_ids = self.mask_token_ids
-        transformer = self.integrated_transformer
+        transformer = self.transformer
         vq_model = self.vq_model
         choice_temperature = self.choice_temperature
 

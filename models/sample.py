@@ -5,6 +5,7 @@ sample
     1) unconditional sampling
     2) class-conditional sampling
 """
+
 import os
 from argparse import ArgumentParser
 
@@ -12,7 +13,7 @@ import numpy as np
 import torch
 import matplotlib.pyplot as plt
 
-from models.MaskGIT.maskgit import MaskGIT
+from models.maskgit import MaskGIT
 from preprocessing.data_pipeline import build_data_pipeline
 from utils import get_root_dir, load_yaml_param_settings
 from tqdm import tqdm
@@ -20,7 +21,7 @@ from tqdm import tqdm
 
 @torch.no_grad()
 def unconditional_sample(
-    maskgit: MaskGIT,
+    generative_model,
     n_samples: int,
     device,
     class_index=None,
@@ -28,6 +29,9 @@ def unconditional_sample(
     return_representations=False,
     guidance_scale=1.0,
 ):
+    """
+    Generative model: MaskGIT or MAGE
+    """
     n_iters = n_samples // batch_size
     is_residual_batch = False
     if n_samples % batch_size > 0:
@@ -36,7 +40,7 @@ def unconditional_sample(
 
     x_new = []
     quantize_new = []
-    sample_callback = maskgit.iterative_decoding
+    sample_callback = generative_model.iterative_decoding
 
     for i in tqdm(range(n_iters)):
         # print(f"it: {i+1}/{n_iters}")
@@ -48,7 +52,9 @@ def unconditional_sample(
         )
 
         if return_representations:
-            x, quantize = maskgit.decode_token_ind_to_timeseries(embed_ind, True)
+            x, quantize = generative_model.decode_token_ind_to_timeseries(
+                embed_ind, True
+            )
             (
                 x,
                 quantize,
@@ -59,7 +65,7 @@ def unconditional_sample(
 
             quantize_new.append(quantize)
         else:
-            x = maskgit.decode_token_ind_to_timeseries(embed_ind).cpu()
+            x = generative_model.decode_token_ind_to_timeseries(embed_ind).cpu()
 
         x_new.append(x)
 
@@ -75,7 +81,7 @@ def unconditional_sample(
 
 @torch.no_grad()
 def conditional_sample(
-    maskgit: MaskGIT,
+    generative_model,
     n_samples: int,
     device,
     class_index: int,
@@ -86,11 +92,11 @@ def conditional_sample(
     """
     class_index: starting from 0. If there are two classes, then `class_index` ∈ {0, 1}.
     """
-    maskgit.transformer.p_unconditional = 0.0
+    generative_model.transformer.p_unconditional = 0.0
 
     if return_representations:
         x_new, quantize_new = unconditional_sample(
-            maskgit,
+            generative_model,
             n_samples,
             device,
             class_index,
@@ -100,7 +106,7 @@ def conditional_sample(
         return x_new, quantize_new
     else:
         x_new = unconditional_sample(
-            maskgit,
+            generative_model,
             n_samples,
             device,
             class_index,

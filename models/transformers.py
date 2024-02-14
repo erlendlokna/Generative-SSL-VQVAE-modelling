@@ -153,7 +153,7 @@ class BidirectionalTransformer(nn.Module):
         return logits
 
 
-class IntegratedBidirectionalTransformer(nn.Module):
+class EncoderDecoderTransformer(nn.Module):
     def __init__(
         self,
         num_tokens: int,
@@ -189,18 +189,15 @@ class IntegratedBidirectionalTransformer(nn.Module):
             pretrained_tok_emb, self.tok_emb, freeze_pretrained_tokens
         )
 
-        # self.latent_tok_emb = nn.Embedding(codebook_size + 1, embed_dim)
-
         # Class Conditional Embedding (+1 for unconditional scenario)
-        self.class_condition_emb = nn.Embedding(n_classes + 1, embed_dim)
+        self.class_condition_emb = nn.Embedding(n_classes + 1, in_dim)
 
-        # Positional Embeddings (+2 to account for summary and class embeddings)
-        self.pos_emb = nn.Embedding(num_tokens + 2, embed_dim)
+        # positional embedding
+        self.pos_emb = nn.Embedding(num_tokens + 1, in_dim)
 
         # Summary Embedding (learnable parameter). Randomly initialized
-        # self.summary_emb = nn.Parameter(torch.randn(1, 1, embed_dim))
-        self.summary_emb = nn.Parameter(torch.zeros(1, 1, embed_dim))
-        # self.summary_emb = nn.Embedding(num_embeddings=1, embedding_dim=embed_dim)
+        self.summary_emb = nn.Parameter(torch.randn(1, 1, embed_dim))
+        # self.summary_emb = nn.Parameter(torch.zeros(1, 1, embed_dim))
 
         # Encoder Transformer
         self.encoder_blocks = ContinuousTransformerWrapper(
@@ -273,64 +270,87 @@ class IntegratedBidirectionalTransformer(nn.Module):
         return cls_emb
 
     def forward(
-        self,
-        embed_ind,
-        class_condition: Union[None, torch.Tensor] = None,
-        return_summary: bool = False,
-        return_latent_tokens: bool = False,
+        self, embed_ind, class_condition: Union[None, torch.Tensor] = None, masks=None
     ):
         device = embed_ind.device
         batch_size = embed_ind.size(0)
 
-        # Token embeddings
-        token_embeddings = self.tok_emb(embed_ind)
+        # Token, class, and summary embeddings
+        token_emb = self.tok_emb(embed_ind)  # (b, n, dim)
 
-        # Class and summary embeddings
-        class_embeddings = self.class_embedding(class_condition, batch_size, device)
-        summary_embedding = self.summary_emb.repeat(batch_size, 1, 1)
+        class_emb = self.class_embedding(
+            class_condition, batch_size, device
+        )  # (b, 1, dim)
 
-        # Positional embeddings for encoder. +2 to account for summary and class embeddings.
-        position_embeddings_enc = self.pos_emb(
-            torch.arange(self.num_tokens + 2, device=device)
-        ).unsqueeze(0)
-        # Positional embeddings for decoder. +1 to account for class embedding.
-        position_embeddings_dec = self.pos_emb(
-            torch.arange(self.num_tokens + 1, device=device)
-        ).unsqueeze(0)
+        summary_emb = self.summary_emb.repeat(batch_size, 1, 1)  # (b, 1, dim)
 
-        # --- Encoder embedding ---
-        encoder_embed = torch.cat(
-            (class_embeddings, summary_embedding, token_embeddings), dim=1
+        # Positional embeddings for encoder
+        n = token_emb.shape[1]
+        position_emb = self.pos_emb.weight[:n, :]
+
+        # Encoder embedding
+        encoder_emb = self.drop(self.ln(token_emb + position_emb))
+        encoder_emb = torch.cat((class_emb, summary_emb, encoder_emb), dim=1)
+        encoder_emb = self.encoder_blocks(encoder_emb)
+
+        # Extract summary and latent representation
+        encoded_summary = encoder_emb[:, 1, :]
+        encoded_representation = encoder_emb[:, 2:, :]
+
+        # mask encodings with the summary
+        encoded_representation = self.mask_encodings(
+            encoded_representation, encoded_summary, masks
         )
-        encoder_embed += position_embeddings_enc
-        encoder_embed = self.drop(self.ln(encoder_embed))
-        encoder_embed = self.encoder_blocks(encoder_embed)
 
-        # extracting summary and latent representation. Normalized, as done in paper on MAGE architecture:
-        summary = self.ln(encoder_embed[:, 1, :])
-        latent_token_embedding = encoder_embed[:, 2:, :]
+        # Decoder embedding
+        decoder_emb = self.drop(self.ln(encoded_representation + position_emb))
+        decoder_emb = torch.cat((class_emb, decoder_emb), dim=1)
+        decoder_emb = self.decoder_blocks(decoder_emb)  # (b, n, dim)
+        decoder_emb = self.Token_Prediction(decoder_emb)[:, 1:, :]
 
-        # --- Decoder embedding.---
-        decoder_embed = torch.cat((class_embeddings, latent_token_embedding), dim=1)
-        decoder_embed += position_embeddings_dec
-        decoder_embed = self.drop(self.ln(decoder_embed))
-        decoder_embed = self.decoder_blocks(decoder_embed)
-        # --- logits prediction ---:
-        decoder_embed = self.Token_Prediction(decoder_embed[:, 1:, :])
-        logits = (
-            torch.matmul(decoder_embed, self.tok_emb.weight.T) + self.bias
-        )  # (b, n, codebook_size+1)logits =
+        logits = torch.matmul(decoder_emb, self.tok_emb.weight.T) + self.bias
+        logits = logits[:, :, :-1]  # Exclude mask token logits
 
-        logits = logits[
-            :, :, :-1
-        ]  # remove the logit for the mask token.  # (b, n, codebook_size)
+        return logits, encoded_summary
 
-        # Return the summary and/or latent token embeddings
-        if return_summary and return_latent_tokens:
-            return logits, summary, latent_token_embedding
-        elif return_summary:
-            return logits, summary
-        elif return_latent_tokens:
-            return logits, latent_token_embedding
-        else:
-            return logits
+    def mask_encodings(self, encodings, summary, masks):
+        b, n, _ = encodings.shape
+        dim = summary.size(1)
+
+        # Ensure masks is a boolean tensor for indexing
+        masks = masks.bool()
+
+        # Expand summary to match the dimensions where masks is True
+        # We use broadcasting: (b, 1, dim) to (b, n, dim) implicitly where masks is True
+        summary_expanded = summary.unsqueeze(1).expand(-1, n, dim)
+
+        # Use masks to index and update encodings directly
+        encodings[masks] = summary_expanded[masks]
+
+        return encodings
+
+    @torch.no_grad()
+    def summarize(self, embed_ind, class_condition: Union[None, torch.Tensor] = None):
+        device = embed_ind.device
+        batch_size = embed_ind.size(0)
+
+        # Token, class, and summary embeddings
+        token_emb = self.tok_emb(embed_ind)  # (b, n, dim)
+        class_emb = self.class_embedding(
+            class_condition, batch_size, device
+        )  # (b, 1, dim)
+        summary_emb = self.summary_emb.repeat(batch_size, 1, 1)  # (b, 1, dim)
+
+        # Positional embeddings
+        n = token_emb.shape[1]
+        position_emb = self.pos_emb.weight[:n, :]
+
+        # Encoder embedding
+        encoder_emb = self.ln(token_emb + position_emb)
+        encoder_emb = torch.cat((class_emb, summary_emb, encoder_emb), dim=1)
+        encoder_emb = self.encoder_blocks(encoder_emb)
+
+        # Extract summary and latent representation
+        encoded_summary = encoder_emb[:, 1, :]
+
+        return encoded_summary

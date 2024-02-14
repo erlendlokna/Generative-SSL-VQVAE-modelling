@@ -7,7 +7,7 @@ from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.loggers import WandbLogger
 from torch.utils.data import DataLoader
 
-from experiments.exp_ssl_vqvae import Exp_SSL_VQVAE
+from experiments.exp_nc_vqvae import Exp_SSL_VQVAE
 from experiments.exp_vqvae import Exp_VQVAE
 
 from preprocessing.preprocess_ucr import UCRDatasetImporter

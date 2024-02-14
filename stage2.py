@@ -17,7 +17,7 @@ from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.loggers import WandbLogger
 from preprocessing.preprocess_ucr import UCRDatasetImporter
 from experiments.exp_maskgit import ExpMaskGIT
-from experiments.exp_ssl_maskgit import ExpSSLMaskGIT
+from experiments.exp_mage import ExpMAGE
 from evaluation.evaluation import Evaluation
 
 # from evaluation.evaluation import Evaluation
@@ -45,7 +45,7 @@ def load_args():
 
 
 def train_stage2(
-    ssl_maskgit: bool,
+    ssl_stage2: bool,
     config: dict,
     train_data_loader: DataLoader,
     test_data_loader: DataLoader,
@@ -60,9 +60,14 @@ def train_stage2(
     n_classes = len(np.unique(train_data_loader.dataset.Y))
     input_length = train_data_loader.dataset.X.shape[-1]
     # initiate model:
-    if ssl_maskgit:
-        train_exp = ExpSSLMaskGIT(
-            input_length, config, len(train_data_loader.dataset), n_classes
+    if ssl_stage2:
+        train_exp = ExpMAGE(
+            input_length,
+            config,
+            len(train_data_loader.dataset),
+            n_classes,
+            train_data_loader=train_data_loader,
+            test_data_loader=test_data_loader,
         )
     else:
         train_exp = ExpMaskGIT(
@@ -96,17 +101,35 @@ def train_stage2(
     wandb.log({"n_trainable_params:": n_trainable_params})
 
     print("saving the model...")
-    save_model(
-        {ssl_config_filename(config, "maskgit"): train_exp.maskgit},
-        id=config["dataset"]["dataset_name"],
-    )
-
+    if ssl_stage2:
+        save_model(
+            {ssl_config_filename(config, "MAGE"): train_exp.MAGE},
+            id=config["dataset"]["dataset_name"],
+        )
+    else:
+        save_model(
+            {ssl_config_filename(config, "maskgit"): train_exp.maskgit},
+            id=config["dataset"]["dataset_name"],
+        )
     # test
     print("evaluating...")
     dataset_name = config["dataset"]["dataset_name"]
     input_length = train_data_loader.dataset.X.shape[-1]
     n_classes = len(np.unique(train_data_loader.dataset.Y))
-    evaluation = Evaluation(dataset_name, gpu_device_idx, config)
+    if ssl_stage2:
+        evaluation = Evaluation(
+            generative_model=train_exp.MAGE,
+            subset_dataset_name=dataset_name,
+            gpu_device_index=gpu_device_idx,
+            config=config,
+        )
+    else:
+        evaluation = Evaluation(
+            generative_model=train_exp.maskgit,
+            subset_dataset_name=dataset_name,
+            gpu_device_index=gpu_device_idx,
+            config=config,
+        )
     _, _, x_gen = evaluation.sample(
         max(evaluation.X_test.shape[0], config["dataset"]["batch_sizes"]["stage2"]),
         input_length,
@@ -141,10 +164,10 @@ if __name__ == "__main__":
     )
 
     # train
-    ssl_maskgit = True
-    print(f"starting training stage 2 {'using SSL' if ssl_maskgit else''}")
+    ssl_stage2 = True
+    print(f"starting training stage 2 using {'MAGE' if ssl_stage2 else'MaskGIT'}")
     train_stage2(
-        ssl_maskgit,
+        ssl_stage2,
         config,
         train_data_loader,
         test_data_loader,

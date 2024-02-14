@@ -6,7 +6,7 @@ import numpy as np
 import torch.nn.functional as F
 
 from experiments.exp_base import ExpBase, detach_the_unnecessary
-from models.MaskGIT.maskgit import MaskGIT
+from models.maskgit import MaskGIT
 from evaluation.evaluation import Evaluation
 
 

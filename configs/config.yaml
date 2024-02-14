@@ -10,13 +10,14 @@ dataset:
 exp_params:
   LR: 0.001 #0.01
   weight_decay: 0.001 #0.00001
+  reptest_per: 10
 
 trainer_params:
   gpus:
     - 0
   max_epochs:
     stage1: 1500 #2000
-    stage2: 4 #10000
+    stage2: 1000 #1000 #10000
 
 encoder:
   dim: 64
@@ -50,11 +51,8 @@ MaskGIT:
     ff_mult: 1
     use_rmsnorm: True
     p_unconditional: 0.2
-  ESS:
-    use: False
-    error_ratio_ma_rate: 0.3
 
-SSLMaskGIT:
+MAGE:
   choice_temperature: 4 # for masking
   stochastic_sampling: 1 # from (Lee et al., 2022)
   T: 10
@@ -66,9 +64,6 @@ SSLMaskGIT:
     ff_mult: 1
     use_rmsnorm: True
     p_unconditional: 0.2
-  ESS:
-    use: False
-    error_ratio_ma_rate: 0.3
 
 class_guidance:
   guidance_scale: 1.
@@ -77,7 +72,7 @@ SSL:
   stage1_method: "barlowtwins" # "barlowtwins" or "vicreg" or empty
   stage1_weight: 1.0
   stage2_method: "barlowtwins" # "barlowtwins" or "vicreg" or empty
-  stage2_weight: 1
+  stage2_weight: 1.0
 
   barlowtwins:
     proj_hid: 4096 #projector hidden layer size

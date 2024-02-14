@@ -13,9 +13,9 @@ import torch
 from einops import repeat, rearrange
 from typing import Callable
 
-from models.MaskGIT.bidirectional_transformers import BidirectionalTransformer
-from models.EncoderDecoder.encoder_decoder import VQVAEEncoder, VQVAEDecoder
-from models.VQ.vq import VectorQuantize
+from models.transformers import EncoderDecoderTransformer
+from models.encoder_decoder import VQVAEEncoder, VQVAEDecoder
+from models.vq import VectorQuantize
 
 from utils import (
     compute_downsample_rate,
@@ -28,11 +28,10 @@ from utils import (
 )
 
 
-class MaskGIT(nn.Module):
+class MAGE(nn.Module):
     """
     references:
-        1. https://github.com/ML4ITS/TimeVQVAE/blob/main/generators/maskgit.py'
-        2. https://github.com/dome272/MaskGIT-pytorch/blob/cff485ad3a14b6ed5f3aa966e045ea2bc8c68ad8/transformer.py#L11
+
     """
 
     def __init__(
@@ -74,29 +73,25 @@ class MaskGIT(nn.Module):
             dim, config["VQVAE"]["codebook"]["size"], **config["VQVAE"]
         )
         # load trained models for encoder, decoder, and vq_models
-        ssl_method = (
-            config["VQVAE"]["ssl_method"]
-            if config["VQVAE"]["ssl_method"] != "None"
-            else ""
-        )
+        stage1_ssl_method = config["SSL"]["stage1_method"]
         self.load(
             self.encoder,
             get_root_dir().joinpath("saved_models"),
             f"{ssl_config_filename(config, 'encoder')}-{dataset_name}.ckpt",
         )
-        print(f"{ssl_method} encoder loaded")
+        print(f"{stage1_ssl_method} encoder loaded")
         self.load(
             self.decoder,
             get_root_dir().joinpath("saved_models"),
             f"{ssl_config_filename(config, 'decoder')}-{dataset_name}.ckpt",
         )
-        print(f"{ssl_method} decoder loaded")
+        print(f"{stage1_ssl_method} decoder loaded")
         self.load(
             self.vq_model,
             get_root_dir().joinpath("saved_models"),
             f"{ssl_config_filename(config, 'vqmodel')}-{dataset_name}.ckpt",
         )
-        print(f"{ssl_method} vqmodel loaded")
+        print(f"{stage1_ssl_method} vqmodel loaded")
 
         # freeze the models for encoder, decoder, and vq_model
         freeze(self.encoder)
@@ -118,11 +113,12 @@ class MaskGIT(nn.Module):
         # pretrained discrete tokens
         embed = nn.Parameter(copy.deepcopy(self.vq_model._codebook.embed))
 
-        self.transformer = BidirectionalTransformer(
+        # Encoder Decoder Bidirectional Transformer
+        self.encoder_decoder_transformer = EncoderDecoderTransformer(
             self.num_tokens,
             config["VQVAE"]["codebook"]["size"],
             config["VQVAE"]["codebook"]["dim"],
-            **config["MaskGIT"]["prior_model"],
+            **config["MAGE"]["prior_model"],
             n_classes=n_classes,
             pretrained_tok_emb=embed,
         )
@@ -156,37 +152,57 @@ class MaskGIT(nn.Module):
         )  # (b c h w), (b (h w) h), ...
         return z_q, indices
 
-    def forward(self, x, y):
+    def forward(self, x, y, return_summaries: bool = False):
         """
         x: (B, C, L)
         y: (B, 1)
-        straight from [https://github.com/dome272/MaskGIT-pytorch/blob/main/transformer.py]
         """
         device = x.device
         _, s = self.encode_to_z_q(x, self.encoder, self.vq_model)  # (b n)
 
-        # randomly sample `t`
-        t = np.random.uniform(0, 1)
+        # --- Creating Masked Tokens ---
+        # randomly sample two 't' values
+        t1 = np.random.uniform(0, 1)
+        t2 = np.random.uniform(0, 1)
 
-        # create masks
-        n_masks = math.floor(self.gamma(t) * s.shape[1])
-        rand = torch.rand(s.shape, device=device)  # (b n)
-        mask = torch.zeros(s.shape, dtype=torch.bool, device=device)
-        mask.scatter_(dim=1, index=rand.topk(n_masks, dim=1).indices, value=True)
+        n_masks1 = math.floor(self.gamma(t1) * s.shape[1])
+        n_masks2 = math.floor(self.gamma(t2) * s.shape[1])
 
-        # masked tokens
+        rand1 = torch.rand(s.shape, device=device)  # (b n)
+        rand2 = torch.rand(s.shape, device=device)  # (b n)
+
+        mask1 = torch.zeros(s.shape, dtype=torch.bool, device=device)
+        mask2 = torch.zeros(s.shape, dtype=torch.bool, device=device)
+
+        mask1.scatter_(dim=1, index=rand1.topk(n_masks1, dim=1).indices, value=True)
+        mask2.scatter_(dim=1, index=rand2.topk(n_masks2, dim=1).indices, value=True)
+
         masked_indices = self.mask_token_ids * torch.ones_like(
             s, device=device
         )  # (b n)
-        s_M = mask * s + (~mask) * masked_indices  # (b n); `~` reverses bool-typed data
 
-        # prediction
-        logits = self.transformer(
-            s_M.detach(), class_condition=y
-        )  # (b n codebook_size)
-        target = s  # (b n)
+        s_M1 = mask1 * s + (~mask1) * masked_indices  # (b n)
+        s_M2 = mask2 * s + (~mask2) * masked_indices  # (b n)
 
-        return logits, target
+        # --- Encode-Decode transformers ---
+        logits1, summary1 = self.encoder_decoder_transformer(s_M1, y, masks=mask1)
+        logits2, summary2 = self.encoder_decoder_transformer(s_M2, y, masks=mask2)
+
+        logits = [logits1, logits2]
+        summaries = [summary1, summary2]
+        target = s
+
+        if return_summaries:
+            return logits, summaries, target
+        else:
+            return logits, target
+
+    @torch.no_grad()
+    def summarize(self, x, y):
+        device = x.device
+        _, s = self.encode_to_z_q(x, self.encoder, self.vq_model)
+        summary = self.encoder_decoder_transformer.summarize(s, y)
+        return summary
 
     def gamma_func(self, mode="cosine"):
         if mode == "linear":
@@ -201,12 +217,14 @@ class MaskGIT(nn.Module):
             raise NotImplementedError
 
     def create_input_tokens_normal(self, num, num_tokens, mask_token_ids, device):
-        """
-        returns masked tokens
-        """
+        # Initialize blank tokens and create masked tokens by multiplying with mask_token_ids
         blank_tokens = torch.ones((num, num_tokens), device=device)
         masked_tokens = mask_token_ids * blank_tokens
-        return masked_tokens.to(torch.int64)
+
+        # Create a mask with all True values, indicating all positions are masked
+        mask = torch.ones((num, num_tokens), dtype=torch.bool, device=device)
+
+        return masked_tokens.to(torch.int64), mask
 
     def mask_by_random_topk(self, mask_len, probs, temperature=1.0, device="cpu"):
         """
@@ -239,21 +257,26 @@ class MaskGIT(nn.Module):
         masking = masking.bool()
         return masking
 
-    def sample_good(
+    def sample(
         self,
         s: torch.Tensor,
         unknown_number_in_the_beginning,
         class_condition: Union[torch.Tensor, None],
+        init_masking,
         guidance_scale: float,
         gamma: Callable,
         device,
     ):
+        masking = init_masking
+
         for t in range(self.T):
-            logits = self.transformer(
-                s, class_condition=class_condition
+            logits, _ = self.encoder_decoder_transformer(
+                s, class_condition=class_condition, masks=masking
             )  # (b n codebook_size) == (b n K)
             if isinstance(class_condition, torch.Tensor):
-                logits_null = self.transformer(s, class_condition=None)
+                logits_null, _ = self.encoder_decoder_transformer(
+                    s, class_condition=None, masks=masking
+                )
                 logits = logits_null + guidance_scale * (logits - logits_null)
 
             sampled_ids = torch.distributions.categorical.Categorical(
@@ -298,20 +321,6 @@ class MaskGIT(nn.Module):
             # Masks tokens with lower confidence.
             s = torch.where(masking, self.mask_token_ids, sampled_ids)  # (b n)
 
-        # use ESS (Enhanced Sampling Scheme)
-        if self.config["MaskGIT"]["ESS"]["use"]:
-            t_star, s_star = self.critical_reverse_sampling(
-                s, unknown_number_in_the_beginning, class_condition
-            )
-            s = self.iterative_decoding_with_self_token_critic(
-                t_star,
-                s_star,
-                unknown_number_in_the_beginning,
-                class_condition,
-                guidance_scale,
-                device,
-            )
-
         return s
 
     @torch.no_grad()
@@ -328,7 +337,7 @@ class MaskGIT(nn.Module):
         :param num: number of samples
         :return: sampled token indices
         """
-        s = self.create_input_tokens_normal(
+        s, init_masks = self.create_input_tokens_normal(
             num, self.num_tokens, self.mask_token_ids, device
         )  # (b n)
 
@@ -343,10 +352,11 @@ class MaskGIT(nn.Module):
             else None
         )  # (b 1)
 
-        s = self.sample_good(
+        s = self.sample(
             s,
             unknown_number_in_the_beginning,
             class_condition,
+            init_masks,
             guidance_scale,
             gamma,
             device,
@@ -401,7 +411,7 @@ class MaskGIT(nn.Module):
         """
 
         mask_token_ids = self.mask_token_ids
-        transformer = self.transformer
+        transformer = self.integrated_transformer
         vq_model = self.vq_model
 
         # compute the confidence scores for s_T
@@ -505,7 +515,7 @@ class MaskGIT(nn.Module):
         device,
     ):
         mask_token_ids = self.mask_token_ids
-        transformer = self.transformer
+        transformer = self.integrated_transformer
         vq_model = self.vq_model
         choice_temperature = self.choice_temperature
 

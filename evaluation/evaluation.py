@@ -2,6 +2,7 @@
 FID, IS, JS divergence.
 """
 
+import numpy as np
 import os
 import copy
 import tempfile
@@ -15,10 +16,9 @@ import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 
-from models.MaskGIT.maskgit import MaskGIT
-from preprocessing.data_pipeline import build_data_pipeline
+from models.maskgit import MaskGIT
 from preprocessing.preprocess_ucr import UCRDatasetImporter
-from models.MaskGIT.sample import unconditional_sample, conditional_sample
+from models.sample import unconditional_sample, conditional_sample
 from supervised_FCN.example_pretrained_model_loading import load_pretrained_FCN
 from supervised_FCN.example_compute_FID import calculate_fid
 from supervised_FCN.example_compute_IS import calculate_inception_score
@@ -40,11 +40,14 @@ class Evaluation(object):
 
     def __init__(
         self,
+        generative_model,
         subset_dataset_name: str,
         gpu_device_index: int,
         config: dict,
         batch_size: int = 256,
     ):
+
+        self.generative_model = generative_model
         self.subset_dataset_name = subset_dataset_name
         self.device = torch.device(gpu_device_index)
         self.batch_size = batch_size
@@ -73,38 +76,24 @@ class Evaluation(object):
     ):
         assert kind in ["unconditional", "conditional"]
 
-        # build
-        maskgit = MaskGIT(
-            input_length,
-            **self.config["MaskGIT"],
-            config=self.config,
-            n_classes=n_classes,
-        ).to(self.device)
-
-        # load
-        fname = (
-            ssl_config_filename(self.config, "maskgit")
-            + f"-{self.config['dataset']['dataset_name']}"
-            + ".ckpt"
-        )
-        try:
-            ckpt_fname = os.path.join("saved_models", fname)
-            maskgit.load_state_dict(torch.load(ckpt_fname), strict=False)
-        except FileNotFoundError:
-            ckpt_fname = Path(tempfile.gettempdir()).joinpath(fname)
-            maskgit.load_state_dict(torch.load(ckpt_fname), strict=False)
-
         # inference mode
-        maskgit.eval()
+        self.generative_model.eval()
 
         # sampling
         if kind == "unconditional":
             x_new = unconditional_sample(
-                maskgit, n_samples, self.device, batch_size=self.batch_size
+                self.generative_model,
+                n_samples,
+                self.device,
+                batch_size=self.batch_size,
             )  # (b c l); b=n_samples, c=1 (univariate)
         elif kind == "conditional":
             x_new = conditional_sample(
-                maskgit, n_samples, self.device, class_index, self.batch_size
+                self.generative_model,
+                n_samples,
+                self.device,
+                class_index,
+                self.batch_size,
             )  # (b c l); b=n_samples, c=1 (univariate)
         else:
             raise ValueError

@@ -25,9 +25,9 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 import wandb
 
 
-class Exp_SSL_VQVAE(ExpBase):
+class Exp_NCVQVAE(ExpBase):
     """
-    VQVAE with a two branch encoder structure. Incorporates an additional SSL objective for the encoder.
+    VQVAE with a two branch encoder structure. Incorporates an additional Non contrastiv SSL objective for the encoder.
     ---
     input_length: length of the input signal
     SSL_method: SSL method to use. Either Barlow Twins or VICReg is supported at this moment.
@@ -162,17 +162,19 @@ class Exp_SSL_VQVAE(ExpBase):
         # forward:
         recons_loss, vq_loss, perplexity, SSL_loss = self.forward(x)
 
-        # calculate vqvae loss:
+        # --- VQVAE Loss ---
         vqvae_loss = (
             recons_loss["time"]
             + recons_loss["timefreq"]
             + vq_loss["loss"]
             + recons_loss["perceptual"]
         )
-
-        # total loss:
+        # --- SSL Loss ---
         SSL_loss = SSL_loss * self.SSL_loss_weight
+
+        # --- Total Loss ---
         loss = vqvae_loss + SSL_loss
+
         # lr scheduler
         sch = self.lr_schedulers()
         sch.step()
@@ -226,6 +228,16 @@ class Exp_SSL_VQVAE(ExpBase):
         opt = torch.optim.AdamW(
             [
                 {
+                    "params": self.SSL_method.parameters(),
+                    "lr": self.config["exp_params"]["LR"],
+                },
+            ],
+            weight_decay=self.config["exp_params"]["weight_decay"],
+        )
+
+        opt = torch.optim.AdamW(
+            [
+                {
                     "params": self.encoder.parameters(),
                     "lr": self.config["exp_params"]["LR"],
                 },
@@ -235,6 +247,10 @@ class Exp_SSL_VQVAE(ExpBase):
                 },
                 {
                     "params": self.vq_model.parameters(),
+                    "lr": self.config["exp_params"]["LR"],
+                },
+                {
+                    "params": self.SSL_method.parameters(),
                     "lr": self.config["exp_params"]["LR"],
                 },
             ],

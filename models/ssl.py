@@ -29,6 +29,34 @@ def global_max_pooling(z):
     return z
 
 
+def batch_dim_wise_normalize(z):
+    """batch dim.-wise normalization (standard-scaling style)"""
+    mean = z.mean(dim=0)  # batch-wise mean
+    std = z.std(dim=0) + 1e-8  # batch-wise std
+    norm_z = (z - mean) / std  # standard-scaling; `dim=0`: batch dim.
+    return norm_z
+
+
+def compute_invariance_loss(z1: Tensor, z2: Tensor) -> Tensor:
+    return F.mse_loss(z1, z2)
+
+
+def compute_var_loss(z: Tensor):
+    return torch.relu(1.0 - torch.sqrt(z.var(dim=0) + 1e-4)).mean()
+
+
+def compute_cov_loss(z: Tensor) -> Tensor:
+    z = z - z.mean(dim=0)
+    N, D = z.shape[0], z.shape[1]  # batch_size, dimension size
+    cov_z = torch.mm(z.T, z) / (N - 1)
+    ind = np.diag_indices(cov_z.shape[0])
+    cov_z[ind[0], ind[1]] = torch.zeros(
+        cov_z.shape[0], device=z.device
+    )  # off-diagonal(..)
+    cov_loss = (cov_z**2).sum() / D
+    return cov_loss
+
+
 class Projector(nn.Module):
     def __init__(self, proj_in, proj_hid, proj_out):
         super().__init__()
@@ -45,14 +73,6 @@ class Projector(nn.Module):
         out = relu(self.nl2(self.linear2(out)))
         out = self.linear3(out)
         return out
-
-
-def batch_dim_wise_normalize(z):
-    """batch dim.-wise normalization (standard-scaling style)"""
-    mean = z.mean(dim=0)  # batch-wise mean
-    std = z.std(dim=0) + 1e-8  # batch-wise std
-    norm_z = (z - mean) / std  # standard-scaling; `dim=0`: batch dim.
-    return norm_z
 
 
 class BarlowTwins(nn.Module):
@@ -142,23 +162,3 @@ class VICReg(nn.Module):
         loss = self.loss_function(z1_projected, z2_projected)
 
         return loss
-
-
-def compute_invariance_loss(z1: Tensor, z2: Tensor) -> Tensor:
-    return F.mse_loss(z1, z2)
-
-
-def compute_var_loss(z: Tensor):
-    return torch.relu(1.0 - torch.sqrt(z.var(dim=0) + 1e-4)).mean()
-
-
-def compute_cov_loss(z: Tensor) -> Tensor:
-    z = z - z.mean(dim=0)
-    N, D = z.shape[0], z.shape[1]  # batch_size, dimension size
-    cov_z = torch.mm(z.T, z) / (N - 1)
-    ind = np.diag_indices(cov_z.shape[0])
-    cov_z[ind[0], ind[1]] = torch.zeros(
-        cov_z.shape[0], device=z.device
-    )  # off-diagonal(..)
-    cov_loss = (cov_z**2).sum() / D
-    return cov_loss

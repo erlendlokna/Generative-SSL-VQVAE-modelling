@@ -7,7 +7,7 @@ from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.loggers import WandbLogger
 from torch.utils.data import DataLoader
 
-from experiments.exp_ssl_vqvae import Exp_SSL_VQVAE
+from experiments.exp_nc_vqvae import Exp_NC_VQVAE
 from experiments.exp_vqvae import Exp_VQVAE
 
 from preprocessing.preprocess_ucr import UCRDatasetImporter
@@ -60,7 +60,7 @@ def train_stage1(
     input_length = train_data_loader.dataset.X.shape[-1]
 
     if ssl_stage1:
-        train_exp = Exp_SSL_VQVAE(
+        train_exp = Exp_NC_VQVAE(
             input_length,
             config=config,
             n_train_samples=len(train_data_loader.dataset),

@@ -5,20 +5,31 @@ import wandb
 import numpy as np
 import torch.nn.functional as F
 
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn import metrics
+
 from experiments.exp_base import ExpBase, detach_the_unnecessary
-from models.MaskGIT.ssl_maskgit import SSLMaskGIT
-from models.SSL.ssl import assign_ssl_method
+from models.mage import MAGE
+from models.ssl import assign_ssl_method
 
 
-class ExpSSLMaskGIT(ExpBase):
+class ExpMAGE(ExpBase):
     def __init__(
-        self, input_length: int, config: dict, n_train_samples: int, n_classes: int
+        self,
+        input_length: int,
+        config: dict,
+        n_train_samples: int,
+        n_classes: int,
+        train_data_loader=None,
+        test_data_loader=None,
     ):
         super().__init__()
         self.config = config
-        self.ssl_maskgit = SSLMaskGIT(
-            input_length, **config["SSLMaskGIT"], config=config, n_classes=n_classes
+
+        self.MAGE = MAGE(
+            input_length, **config["MAGE"], config=config, n_classes=n_classes
         )
+
         self.T_max = config["trainer_params"]["max_epochs"]["stage2"] * (
             np.ceil(n_train_samples / config["dataset"]["batch_sizes"]["stage2"]) + 1
         )
@@ -32,20 +43,20 @@ class ExpSSLMaskGIT(ExpBase):
         )
         self.SSL_weight = config["SSL"]["stage2_weight"]
 
-        print("SSL MaskGIT initialized")
-        print(
-            f"TF-Encoder: {config['SSLMaskGIT']['prior_model']['encoder_layers']}-layers"
-        )
-        print(
-            f"TF-Decoder: {config['SSLMaskGIT']['prior_model']['decoder_layers']}-layers"
-        )
+        self.train_dataloader = train_data_loader
+        self.test_dataloader = test_data_loader
+
+        print("MAGE initialized")
+        print(f"TF-Encoder: {config['MAGE']['prior_model']['encoder_layers']}-layers")
+        print(f"TF-Decoder: {config['MAGE']['prior_model']['decoder_layers']}-layers")
 
         print("SSL method initialized")
         print(f"method type: {self.SSL_method.name} with weight: {self.SSL_weight}")
 
     def forward(self, batch, batch_idx):
         x, y = batch
-        logits, summaries, target = self.ssl_maskgit(x, y, return_summaries=True)
+        logits, summaries, target = self.MAGE(x, y, return_summaries=True)
+
         summary1, summary2 = summaries  # unpack
         logits1, logits2 = logits
 
@@ -56,22 +67,18 @@ class ExpSSLMaskGIT(ExpBase):
             logits2.reshape(-1, logits2.size(-1)), target.reshape(-1)
         )
 
-        prior_loss = 0.5 * (prior_loss1 + prior_loss2)  # average over two predictions
-
         ssl_loss = self.SSL_method(summary1, summary2)
 
         # maskgit sampling
         r = np.random.rand()
         if batch_idx == 0 and r <= 0.05:
-            self.ssl_maskgit.eval()
+            self.MAGE.eval()
 
             class_index = np.random.choice(np.concatenate(([None], np.unique(y.cpu()))))
 
             # Unconditional sampling
-            s = self.ssl_maskgit.iterative_decoding(
-                device=x.device, class_index=class_index
-            )
-            x_new = self.ssl_maskgit.decode_token_ind_to_timeseries(s).cpu()
+            s = self.MAGE.iterative_decoding(device=x.device, class_index=class_index)
+            x_new = self.MAGE.decode_token_ind_to_timeseries(s).cpu()
 
             b = 0
             fig, axes = plt.subplots(1, 1, figsize=(4, 2))
@@ -79,28 +86,21 @@ class ExpSSLMaskGIT(ExpBase):
             axes.set_ylim(-4, 4)
             plt.title(f"ep_{self.current_epoch}; class-{class_index}")
             plt.tight_layout()
-            wandb.log({f"ssl maskgit sample": wandb.Image(plt)})
+            wandb.log({f"MAGE sample": wandb.Image(plt)})
             plt.close()
 
         """
         :param x: (B, C, L)
         """
-        return prior_loss, ssl_loss
+        return prior_loss1, prior_loss2, ssl_loss
 
     def training_step(self, batch, batch_idx):
-        prior_loss, ssl_loss = self.forward(batch, batch_idx)
+        prior_loss1, prior_loss2, ssl_loss = self.forward(batch, batch_idx)
 
         ssl_loss *= self.SSL_weight
 
+        prior_loss = 0.5 * (prior_loss1 + prior_loss2)
         loss = prior_loss + ssl_loss
-        print(
-            "loss:",
-            loss.item(),
-            "prior_loss:",
-            prior_loss.item(),
-            "ssl_loss:",
-            ssl_loss.item(),
-        )
 
         # lr scheduler
         sch = self.lr_schedulers()
@@ -109,25 +109,23 @@ class ExpSSLMaskGIT(ExpBase):
         # log
         loss_hist = {
             "loss": loss,
-            f"{self.SSL_method.name}-loss": ssl_loss,
             "prior_loss": prior_loss,
+            "prior_loss1": prior_loss1,
+            "prior_loss2": prior_loss2,
+            f"{self.SSL_method.name}-loss": ssl_loss,
         }
         wandb.log(loss_hist)
 
         detach_the_unnecessary(loss_hist)
 
-        print(
-            "summaryemb grad:",
-            torch.sum(self.ssl_maskgit.integrated_transformer.summary_emb),
-        )
         return loss_hist
 
     @torch.no_grad()
     def validation_step(self, batch, batch_idx):
         x, y = batch
 
-        val_prior_loss, val_ssl_loss = self.forward(batch, batch_idx)
-
+        val_prior_loss1, val_prior_loss2, val_ssl_loss = self.forward(batch, batch_idx)
+        val_prior_loss = 0.5 * (val_prior_loss1 + val_prior_loss2)
         val_loss = val_prior_loss + self.SSL_weight * val_ssl_loss
 
         # log
@@ -135,6 +133,8 @@ class ExpSSLMaskGIT(ExpBase):
             "val_loss": val_loss,
             "val_prior_loss": val_prior_loss,
             f"val_{self.SSL_method.name}-loss": val_ssl_loss,
+            "val_prior_loss1": val_prior_loss1,
+            "val_prior_loss2": val_prior_loss2,
         }
 
         wandb.log(loss_hist)
@@ -146,7 +146,11 @@ class ExpSSLMaskGIT(ExpBase):
         opt = torch.optim.AdamW(
             [
                 {
-                    "params": self.ssl_maskgit.parameters(),
+                    "params": self.MAGE.parameters(),
+                    "lr": self.config["exp_params"]["LR"],
+                },
+                {
+                    "params": self.SSL_method.parameters(),
                     "lr": self.config["exp_params"]["LR"],
                 },
             ],
@@ -169,3 +173,31 @@ class ExpSSLMaskGIT(ExpBase):
 
         detach_the_unnecessary(loss_hist)
         return loss_hist
+
+    def summarize_dataloader(self, data_loader):
+        summary_data = []
+        for batch in data_loader:
+            x, y = batch[0].to(self.device), batch[1].to(self.device)
+            summary = self.MAGE.summarize(x, y)
+            for s in summary:
+                summary_data.append(s.tolist())
+        return summary_data
+
+    @torch.no_grad()
+    def on_train_epoch_end(self):
+        if (
+            self.current_epoch % 10 == 0
+            and self.train_dataloader
+            and self.test_dataloader
+        ) or self.current_epoch == 0:
+            S_train = np.array(self.summarize_dataloader(self.train_dataloader))
+            S_test = np.array(self.summarize_dataloader(self.test_dataloader))
+            Y_train = self.train_dataloader.dataset.Y.flatten()
+            Y_test = self.test_dataloader.dataset.Y.flatten()
+
+            knn = KNeighborsClassifier()
+
+            knn.fit(S_train, Y_train)
+            preds = knn.predict(S_test)
+
+            wandb.log({"knn accuracy": metrics.accuracy_score(Y_test, preds)})
