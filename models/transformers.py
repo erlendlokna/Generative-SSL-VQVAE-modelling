@@ -317,15 +317,23 @@ class EncoderDecoderTransformer(nn.Module):
         b, n, _ = encodings.shape
         dim = summary.size(1)
 
-        # Ensure masks is a boolean tensor for indexing
-        masks = masks.bool()
-
         # Expand summary to match the dimensions where masks is True
         # We use broadcasting: (b, 1, dim) to (b, n, dim) implicitly where masks is True
         summary_expanded = summary.unsqueeze(1).expand(-1, n, dim)
 
         # Use masks to index and update encodings directly
         encodings[masks] = summary_expanded[masks]
+
+        """ Debuggin print. The following gave equal number of "summaries" in encodings and masks
+        print(Total True in masks: {masks.sum().item()}")
+        count = 0
+        for i in range(b):
+            for j in range(n):
+                if all(encodings[i, j] == summary_expanded[i, j]):
+                    count+=1
+        
+        print(number of "summaries" in encodings: {count})
+        """
 
         return encodings
 
