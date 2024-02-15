@@ -198,11 +198,20 @@ class MAGE(nn.Module):
             return logits, target
 
     @torch.no_grad()
-    def summarize(self, x, y):
-        device = x.device
+    def summarize(self, x):
         _, s = self.encode_to_z_q(x, self.encoder, self.vq_model)
-        summary = self.autoencoder_transformer.summarize(s, y)
+        summary = self.autoencoder_transformer.summarize(s)
         return summary
+
+    @torch.no_grad()
+    def summarize_dataloader(self, data_loader, device):
+        summary_data = []
+        for batch in data_loader:
+            x, _ = batch[0].to(device), batch[1].to(device)
+            summary = self.summarize(x)
+            for s in summary:
+                summary_data.append(s.tolist())
+        return np.array(summary_data)
 
     def gamma_func(self, mode="cosine"):
         if mode == "linear":

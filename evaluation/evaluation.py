@@ -27,6 +27,135 @@ from utils import (
     timefreq_to_time,
     ssl_config_filename,
 )
+from preprocessing.data_pipeline import build_data_pipeline
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn import metrics
+
+
+class ExpEvaluation(object):
+    def __init__(self, config, device):
+        self.device = device
+        self.dataset_name = config["dataset"]["dataset_name"]
+        self.batch_size = config["dataset"]["batch_sizes"]["stage2"]
+
+        self.fcn = load_pretrained_FCN(self.dataset_name).to(device)
+        self.fcn.eval()
+
+        dataset_importer = UCRDatasetImporter(**config["dataset"])
+
+        self.train_data_loader = build_data_pipeline(
+            self.batch_size, dataset_importer, config, "train", augment=False
+        )
+        self.test_data_loader = build_data_pipeline(
+            self.batch_size, dataset_importer, config, "test", augment=False
+        )
+
+        self.X_train = dataset_importer.X_train[:, None, :]
+        self.X_test = dataset_importer.X_test[:, None, :]
+
+        self.config = config
+
+    @torch.no_grad()
+    def sample_eval(self, model, n_samples=None, device: torch.device = None):
+        if n_samples is None:
+            n_samples = self.X_test.shape[0]
+
+        model.eval()
+
+        uncond_sample = self.sample(model, n_samples, "unconditional", device)
+
+        # Convert generated samples to feature vectors
+        z_test, z_gen = self.compute_z(uncond_sample)
+
+        # Calculate FID score between real and generated samples
+        fid_score = calculate_fid(z_test, z_gen)
+
+        return {"fid_score": fid_score}
+
+    def downstream_summary_eval(self, MAGE, device):
+        MAGE.eval()
+
+        summary_train = MAGE.summarize_dataloader(self.train_data_loader, device)
+        summary_test = MAGE.summarize_dataloader(self.test_data_loader, device)
+        y_train = self.train_data_loader.dataset.Y.flatten()
+        y_test = self.test_data_loader.dataset.Y.flatten()
+
+        knn = KNeighborsClassifier()
+        knn.fit(summary_train, y_train)
+        preds = knn.predict(summary_test)
+
+        return {"knn_accuracy": metrics.accuracy_score(y_test, preds)}
+
+    @torch.no_grad()
+    def sample(
+        self,
+        model,
+        n_samples: int,
+        kind: str,
+        device: torch.device,
+        class_index: int = -1,
+    ):
+
+        assert kind in ["unconditional", "conditional"]
+
+        # sampling
+        if kind == "unconditional":
+            x_new = unconditional_sample(
+                model,
+                n_samples,
+                device,
+                batch_size=self.batch_size,
+            )  # (b c l); b=n_samples, c=1 (univariate)
+        elif kind == "conditional":
+            x_new = conditional_sample(
+                model,
+                n_samples,
+                device,
+                class_index,
+                self.batch_size,
+            )  # (b c l); b=n_samples, c=1 (univariate)
+        else:
+            raise ValueError
+
+        return x_new
+
+    @torch.no_grad()
+    def compute_z(self, X_gen: torch.Tensor):
+        """
+        It computes representation z given input x
+        :param X_gen: generated X
+        :return: z_test (z on X_test), z_gen (z on X_generated)
+        """
+        n_samples = self.X_test.shape[0]
+        n_iters = n_samples // self.batch_size
+        if n_samples % self.batch_size > 0:
+            n_iters += 1
+
+        # get feature vectors from `X_test` and `X_gen`
+        z_test, z_gen = [], []
+        for i in range(n_iters):
+            s = slice(i * self.batch_size, (i + 1) * self.batch_size)
+
+            z_t = (
+                self.fcn(
+                    torch.from_numpy(self.X_test[s]).float().to(self.device),
+                    return_feature_vector=True,
+                )
+                .cpu()
+                .detach()
+                .numpy()
+            )
+            z_g = (
+                self.fcn(X_gen[s].float().to(self.device), return_feature_vector=True)
+                .cpu()
+                .detach()
+                .numpy()
+            )
+
+            z_test.append(z_t)
+            z_gen.append(z_g)
+        z_test, z_gen = np.concatenate(z_test, axis=0), np.concatenate(z_gen, axis=0)
+        return z_test, z_gen
 
 
 class Evaluation(object):

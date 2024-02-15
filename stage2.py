@@ -66,8 +66,6 @@ def train_stage2(
             config,
             len(train_data_loader.dataset),
             n_classes,
-            train_data_loader=train_data_loader,
-            test_data_loader=test_data_loader,
         )
     else:
         train_exp = ExpMaskGIT(

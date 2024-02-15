@@ -171,7 +171,9 @@ class AutoEncoderTransformer(nn.Module):
         freeze_pretrained_tokens: bool = False,
     ):
         """
-        Contains a encoder transformer and a decoder transformer.
+        Contains two bidirectional transformers, one for encoding and one for decoding.
+
+        The encoded representation gets masked with a summary vector before being passed to the decoder.
         """
         super().__init__()
 
@@ -243,7 +245,11 @@ class AutoEncoderTransformer(nn.Module):
         self.drop = nn.Dropout(p=0.0)
 
     def class_embedding(
-        self, class_condition: Union[None, torch.Tensor], batch_size: int, device
+        self,
+        class_condition: Union[None, torch.Tensor],
+        batch_size: int,
+        device,
+        unconditional=True,
     ):
         if isinstance(class_condition, torch.Tensor):
             # if condition is given (conditional sampling)
@@ -338,14 +344,14 @@ class AutoEncoderTransformer(nn.Module):
         return encodings
 
     @torch.no_grad()
-    def summarize(self, embed_ind, class_condition: Union[None, torch.Tensor] = None):
+    def summarize(self, embed_ind):
         device = embed_ind.device
         batch_size = embed_ind.size(0)
 
         # Token, class, and summary embeddings
         token_emb = self.tok_emb(embed_ind)  # (b, n, dim)
         class_emb = self.class_embedding(
-            class_condition, batch_size, device
+            class_condition=None, batch_size=batch_size, device=device
         )  # (b, 1, dim)
         summary = self.summary.repeat(batch_size, 1, 1)  # (b, 1, dim)
 

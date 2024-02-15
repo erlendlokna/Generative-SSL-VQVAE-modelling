@@ -11,6 +11,7 @@ from sklearn import metrics
 from experiments.exp_base import ExpBase, detach_the_unnecessary
 from models.mage import MAGE
 from models.ssl import assign_ssl_method
+from evaluation.evaluation import ExpEvaluation
 
 
 class ExpMAGE(ExpBase):
@@ -20,8 +21,6 @@ class ExpMAGE(ExpBase):
         config: dict,
         n_train_samples: int,
         n_classes: int,
-        train_data_loader=None,
-        test_data_loader=None,
     ):
         super().__init__()
         self.config = config
@@ -43,8 +42,10 @@ class ExpMAGE(ExpBase):
         )
         self.SSL_weight = config["SSL"]["stage2_weight"]
 
-        self.train_dataloader = train_data_loader
-        self.test_dataloader = test_data_loader
+        self.exp_evaluation = ExpEvaluation(
+            config,
+            self.device,
+        )
 
         print("MAGE initialized")
         print(f"TF-Encoder: {config['MAGE']['prior_model']['encoder_layers']}-layers")
@@ -185,6 +186,7 @@ class ExpMAGE(ExpBase):
 
     @torch.no_grad()
     def on_train_epoch_end(self):
+        """
         if (
             self.current_epoch % 10 == 0
             and self.train_dataloader
@@ -201,3 +203,17 @@ class ExpMAGE(ExpBase):
             preds = knn.predict(S_test)
 
             wandb.log({"knn accuracy": metrics.accuracy_score(Y_test, preds)})
+        """
+
+        if self.current_epoch % 10 == 0 or self.current_epoch == 0:
+            downstream_eval = self.exp_evaluation.downstream_summary_eval(
+                self.MAGE, device=self.device
+            )
+            wandb.log(downstream_eval)
+
+            sample_eval = self.exp_evaluation.sample_eval(self.MAGE, device=self.device)
+            wandb.log(sample_eval)
+        # scores = self.exp_evaluation.eval(self.MAGE, device=self.device)
+        self.exp_evaluation.downstream_summary_eval(self.MAGE, device=self.device)
+
+        # wandb.log(scores)

@@ -42,7 +42,7 @@ def unconditional_sample(
     quantize_new = []
     sample_callback = generative_model.iterative_decoding
 
-    for i in tqdm(range(n_iters)):
+    for i in range(n_iters):
         # print(f"it: {i+1}/{n_iters}")
         b = batch_size
         if (i + 1 == n_iters) and is_residual_batch:
