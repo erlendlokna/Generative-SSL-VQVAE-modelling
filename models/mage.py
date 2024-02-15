@@ -13,7 +13,7 @@ import torch
 from einops import repeat, rearrange
 from typing import Callable
 
-from models.transformers import EncoderDecoderTransformer
+from models.transformers import AutoEncoderTransformer
 from models.encoder_decoder import VQVAEEncoder, VQVAEDecoder
 from models.vq import VectorQuantize
 
@@ -114,7 +114,7 @@ class MAGE(nn.Module):
         embed = nn.Parameter(copy.deepcopy(self.vq_model._codebook.embed))
 
         # Encoder Decoder Bidirectional Transformer
-        self.encoder_decoder_transformer = EncoderDecoderTransformer(
+        self.autoencoder_transformer = AutoEncoderTransformer(
             self.num_tokens,
             config["VQVAE"]["codebook"]["size"],
             config["VQVAE"]["codebook"]["dim"],
@@ -185,8 +185,8 @@ class MAGE(nn.Module):
         s_M2 = mask2 * s + (~mask2) * masked_indices  # (b n)
 
         # --- Encode-Decode transformers ---
-        logits1, summary1 = self.encoder_decoder_transformer(s_M1, y, masks=mask1)
-        logits2, summary2 = self.encoder_decoder_transformer(s_M2, y, masks=mask2)
+        logits1, summary1 = self.autoencoder_transformer(s_M1, y, masks=mask1)
+        logits2, summary2 = self.autoencoder_transformer(s_M2, y, masks=mask2)
 
         logits = [logits1, logits2]
         summaries = [summary1, summary2]
@@ -201,7 +201,7 @@ class MAGE(nn.Module):
     def summarize(self, x, y):
         device = x.device
         _, s = self.encode_to_z_q(x, self.encoder, self.vq_model)
-        summary = self.encoder_decoder_transformer.summarize(s, y)
+        summary = self.autoencoder_transformer.summarize(s, y)
         return summary
 
     def gamma_func(self, mode="cosine"):
@@ -270,11 +270,11 @@ class MAGE(nn.Module):
         masking = init_masking
 
         for t in range(self.T):
-            logits, _ = self.encoder_decoder_transformer(
+            logits, _ = self.autoencoder_transformer(
                 s, class_condition=class_condition, masks=masking
             )  # (b n codebook_size) == (b n K)
             if isinstance(class_condition, torch.Tensor):
-                logits_null, _ = self.encoder_decoder_transformer(
+                logits_null, _ = self.autoencoder_transformer(
                     s, class_condition=None, masks=masking
                 )
                 logits = logits_null + guidance_scale * (logits - logits_null)

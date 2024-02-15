@@ -145,6 +145,7 @@ if __name__ == "__main__":
     # Train VQVAE without validation
     print("Starting training...")
     train_stage1(
+        ssl_stage1=stage1_ssl_method,
         config=config,
         train_data_loader=train_data_loader,
         test_data_loader=test_data_loader,

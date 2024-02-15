@@ -1,9 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from models.EncoderDecoder.encoder_decoder import VQVAEEncoder, VQVAEDecoder
-from models.VQ.vq import VectorQuantize
-from models.SSL.ssl import assign_ssl_method
+from models.encoder_decoder import VQVAEEncoder, VQVAEDecoder
+from models.vq import VectorQuantize
+from models.ssl import assign_ssl_method
 
 from utils import (
     compute_downsample_rate,
@@ -25,7 +25,7 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 import wandb
 
 
-class Exp_NCVQVAE(ExpBase):
+class Exp_NC_VQVAE(ExpBase):
     """
     VQVAE with a two branch encoder structure. Incorporates an additional Non contrastiv SSL objective for the encoder.
     ---
@@ -225,16 +225,6 @@ class Exp_NCVQVAE(ExpBase):
         return val_loss_hist
 
     def configure_optimizers(self):
-        opt = torch.optim.AdamW(
-            [
-                {
-                    "params": self.SSL_method.parameters(),
-                    "lr": self.config["exp_params"]["LR"],
-                },
-            ],
-            weight_decay=self.config["exp_params"]["weight_decay"],
-        )
-
         opt = torch.optim.AdamW(
             [
                 {

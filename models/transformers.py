@@ -153,7 +153,7 @@ class BidirectionalTransformer(nn.Module):
         return logits
 
 
-class EncoderDecoderTransformer(nn.Module):
+class AutoEncoderTransformer(nn.Module):
     def __init__(
         self,
         num_tokens: int,
@@ -196,7 +196,7 @@ class EncoderDecoderTransformer(nn.Module):
         self.pos_emb = nn.Embedding(num_tokens + 1, in_dim)
 
         # Summary Embedding (learnable parameter). Randomly initialized
-        self.summary_emb = nn.Parameter(torch.randn(1, 1, embed_dim))
+        self.summary = nn.Parameter(torch.randn(1, 1, embed_dim))
         # self.summary_emb = nn.Parameter(torch.zeros(1, 1, embed_dim))
 
         # Encoder Transformer
@@ -282,7 +282,7 @@ class EncoderDecoderTransformer(nn.Module):
             class_condition, batch_size, device
         )  # (b, 1, dim)
 
-        summary_emb = self.summary_emb.repeat(batch_size, 1, 1)  # (b, 1, dim)
+        summary = self.summary.repeat(batch_size, 1, 1)  # (b, 1, dim)
 
         # Positional embeddings for encoder
         n = token_emb.shape[1]
@@ -290,7 +290,7 @@ class EncoderDecoderTransformer(nn.Module):
 
         # Encoder embedding
         encoder_emb = self.drop(self.ln(token_emb + position_emb))
-        encoder_emb = torch.cat((class_emb, summary_emb, encoder_emb), dim=1)
+        encoder_emb = torch.cat((class_emb, summary, encoder_emb), dim=1)
         encoder_emb = self.encoder_blocks(encoder_emb)
 
         # Extract summary and latent representation
@@ -347,7 +347,7 @@ class EncoderDecoderTransformer(nn.Module):
         class_emb = self.class_embedding(
             class_condition, batch_size, device
         )  # (b, 1, dim)
-        summary_emb = self.summary_emb.repeat(batch_size, 1, 1)  # (b, 1, dim)
+        summary = self.summary.repeat(batch_size, 1, 1)  # (b, 1, dim)
 
         # Positional embeddings
         n = token_emb.shape[1]
@@ -355,7 +355,7 @@ class EncoderDecoderTransformer(nn.Module):
 
         # Encoder embedding
         encoder_emb = self.ln(token_emb + position_emb)
-        encoder_emb = torch.cat((class_emb, summary_emb, encoder_emb), dim=1)
+        encoder_emb = torch.cat((class_emb, summary, encoder_emb), dim=1)
         encoder_emb = self.encoder_blocks(encoder_emb)
 
         # Extract summary and latent representation
