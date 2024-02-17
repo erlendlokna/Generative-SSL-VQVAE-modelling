@@ -56,6 +56,7 @@ class ExpMAGE(ExpBase):
 
     def forward(self, batch, batch_idx):
         x, y = batch
+
         logits, summaries, target = self.MAGE(x, y, return_summaries=True)
 
         summary1, summary2 = summaries  # unpack
@@ -175,36 +176,9 @@ class ExpMAGE(ExpBase):
         detach_the_unnecessary(loss_hist)
         return loss_hist
 
-    def summarize_dataloader(self, data_loader):
-        summary_data = []
-        for batch in data_loader:
-            x, y = batch[0].to(self.device), batch[1].to(self.device)
-            summary = self.MAGE.summarize(x, y)
-            for s in summary:
-                summary_data.append(s.tolist())
-        return summary_data
-
     @torch.no_grad()
     def on_train_epoch_end(self):
         """
-        if (
-            self.current_epoch % 10 == 0
-            and self.train_dataloader
-            and self.test_dataloader
-        ) or self.current_epoch == 0:
-            S_train = np.array(self.summarize_dataloader(self.train_dataloader))
-            S_test = np.array(self.summarize_dataloader(self.test_dataloader))
-            Y_train = self.train_dataloader.dataset.Y.flatten()
-            Y_test = self.test_dataloader.dataset.Y.flatten()
-
-            knn = KNeighborsClassifier()
-
-            knn.fit(S_train, Y_train)
-            preds = knn.predict(S_test)
-
-            wandb.log({"knn accuracy": metrics.accuracy_score(Y_test, preds)})
-        """
-
         if self.current_epoch % 10 == 0 or self.current_epoch == 0:
             downstream_eval = self.exp_evaluation.downstream_summary_eval(
                 self.MAGE, device=self.device
@@ -213,7 +187,12 @@ class ExpMAGE(ExpBase):
 
             sample_eval = self.exp_evaluation.sample_eval(self.MAGE, device=self.device)
             wandb.log(sample_eval)
-        # scores = self.exp_evaluation.eval(self.MAGE, device=self.device)
-        self.exp_evaluation.downstream_summary_eval(self.MAGE, device=self.device)
-
-        # wandb.log(scores)
+        """
+        if self.current_epoch % 20 == 0 or self.current_epoch == 0:
+            # sample_eval_scores = self.exp_evaluation.sample_eval(
+            #    self.MAGE, device=self.device
+            # )
+            downstream_eval_scores = self.exp_evaluation.downstream_summary_eval(
+                self.MAGE, device=self.device
+            )
+            wandb.log(downstream_eval_scores)  # merge dictionaries

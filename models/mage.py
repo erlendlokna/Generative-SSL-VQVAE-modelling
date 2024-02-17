@@ -177,16 +177,9 @@ class MAGE(nn.Module):
         mask1.scatter_(dim=1, index=rand1.topk(n_masks1, dim=1).indices, value=True)
         mask2.scatter_(dim=1, index=rand2.topk(n_masks2, dim=1).indices, value=True)
 
-        masked_indices = self.mask_token_ids * torch.ones_like(
-            s, device=device
-        )  # (b n)
-
-        s_M1 = mask1 * s + (~mask1) * masked_indices  # (b n)
-        s_M2 = mask2 * s + (~mask2) * masked_indices  # (b n)
-
         # --- Encode-Decode transformers ---
-        logits1, summary1 = self.autoencoder_transformer(s_M1, y, masks=mask1)
-        logits2, summary2 = self.autoencoder_transformer(s_M2, y, masks=mask2)
+        logits1, summary1 = self.autoencoder_transformer(s, y, masks=mask1)
+        logits2, summary2 = self.autoencoder_transformer(s, y, masks=mask2)
 
         logits = [logits1, logits2]
         summaries = [summary1, summary2]
@@ -280,11 +273,13 @@ class MAGE(nn.Module):
 
         for t in range(self.T):
             logits, _ = self.autoencoder_transformer(
-                s, class_condition=class_condition, masks=masking
+                embed_ind=s,
+                class_condition=class_condition,
+                masks=masking,
             )  # (b n codebook_size) == (b n K)
             if isinstance(class_condition, torch.Tensor):
                 logits_null, _ = self.autoencoder_transformer(
-                    s, class_condition=None, masks=masking
+                    embed_ind=s, class_condition=None, masks=masking
                 )
                 logits = logits_null + guidance_scale * (logits - logits_null)
 
