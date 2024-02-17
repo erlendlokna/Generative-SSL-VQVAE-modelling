@@ -332,9 +332,6 @@ class AutoEncoderTransformer(nn.Module):
         masks=None,
     ):
         device = embed_ind.device
-        self.tok_emb = self.tok_emb.to(device)
-        self.pos_emb = self.pos_emb.to(device)
-        self.ln = self.ln.to(device)
 
         # embed_ind.to(device)
         batch_size = embed_ind.size(0)
