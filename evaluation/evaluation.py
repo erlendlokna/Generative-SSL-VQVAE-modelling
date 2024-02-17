@@ -30,6 +30,7 @@ from utils import (
 from preprocessing.data_pipeline import build_data_pipeline
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn import metrics
+from sklearn.preprocessing import MinMaxScaler
 
 
 class ExpEvaluation(object):
@@ -43,15 +44,11 @@ class ExpEvaluation(object):
 
         dataset_importer = UCRDatasetImporter(**config["dataset"])
 
-        self.train_data_loader = build_data_pipeline(
-            self.batch_size, dataset_importer, config, "train", augment=False
-        )
-        self.test_data_loader = build_data_pipeline(
-            self.batch_size, dataset_importer, config, "test", augment=False
-        )
-
         self.X_train = dataset_importer.X_train[:, None, :]
         self.X_test = dataset_importer.X_test[:, None, :]
+
+        self.Y_train = dataset_importer.Y_train
+        self.Y_test = dataset_importer.Y_test
 
         self.config = config
 
@@ -73,18 +70,29 @@ class ExpEvaluation(object):
         return {"fid_score": fid_score}
 
     def downstream_summary_eval(self, MAGE, device):
+
         MAGE.eval()
 
-        summary_train = MAGE.summarize_dataloader(self.train_data_loader, device)
-        summary_test = MAGE.summarize_dataloader(self.test_data_loader, device)
-        y_train = self.train_data_loader.dataset.Y.flatten()
-        y_test = self.test_data_loader.dataset.Y.flatten()
+        # Convert X_train and y_train to PyTorch tensors and move them to the specified device
+        X_train = torch.from_numpy(self.X_train).float()
+        X_test = torch.from_numpy(self.X_test).float()
+
+        # Use MAGE.summarize on X_train and y_train
+        summary_train = MAGE.summarize(X_train.to(device)).cpu()
+        summary_test = MAGE.summarize(X_test.to(device)).cpu()
+
+        Y_train = self.Y_train.flatten()
+        Y_test = self.Y_test.flatten()
+
+        scaler = MinMaxScaler(feature_range=(-1, 1)).fit(summary_train)
+        summary_train = scaler.transform(summary_train)
+        summary_test = scaler.transform(summary_test)
 
         knn = KNeighborsClassifier()
-        knn.fit(summary_train, y_train)
+        knn.fit(summary_train, Y_train)
         preds = knn.predict(summary_test)
 
-        return {"knn_accuracy": metrics.accuracy_score(y_test, preds)}
+        return {"knn_accuracy": metrics.accuracy_score(Y_test, preds)}
 
     @torch.no_grad()
     def sample(

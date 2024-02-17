@@ -128,8 +128,8 @@ class VICReg(nn.Module):
 
         self.projector = Projector(
             proj_in=proj_in,
-            proj_hid=self.SSL_config["proj_hid"],
-            proj_out=self.SSL_config["proj_out"],
+            proj_hid=self.vicreg_config["proj_hid"],
+            proj_out=self.vicreg_config["proj_out"],
         )
 
     def loss_function(self, z1: Tensor, z2: Tensor, loss_hist: dict = {}):

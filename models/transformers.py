@@ -202,6 +202,7 @@ class AutoEncoderTransformer(nn.Module):
         # Summary Embedding (learnable parameter). Randomly initialized
         # self.summary = nn.Parameter(torch.randn(1, 1, embed_dim))
         self.summary_emb = nn.Parameter(torch.zeros(1, 1, embed_dim))
+        torch.nn.init.normal_(self.summary_emb, std=0.02)
 
         # Encoder Transformer
         self.encoder_blocks = ContinuousTransformerWrapper(
@@ -368,7 +369,7 @@ class AutoEncoderTransformer(nn.Module):
         # A unconditioned summary is interesting.
         _, summary = self.forward_encoder(token_emb, cls_emb)
 
-        return summary
+        return self.ln(summary)
 
     def filter_unmasked_tokens(self, token_emb, masks, device):
         if masks is None:

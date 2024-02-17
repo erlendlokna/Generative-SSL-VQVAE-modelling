@@ -80,6 +80,7 @@ class ExpMAGE(ExpBase):
 
             # Unconditional sampling
             s = self.MAGE.iterative_decoding(device=x.device, class_index=class_index)
+
             x_new = self.MAGE.decode_token_ind_to_timeseries(s).cpu()
 
             b = 0
@@ -177,7 +178,7 @@ class ExpMAGE(ExpBase):
         return loss_hist
 
     @torch.no_grad()
-    def on_train_epoch_end(self):
+    def on_train_epoch_end(self) -> None:
         """
         if self.current_epoch % 10 == 0 or self.current_epoch == 0:
             downstream_eval = self.exp_evaluation.downstream_summary_eval(

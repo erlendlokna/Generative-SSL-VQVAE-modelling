@@ -1,5 +1,5 @@
 dataset:
-  dataset_name: "StarLightCurves"
+  dataset_name: "ECG5000"
   in_channels: 1
   data_scaling: True
   batch_sizes:
@@ -72,7 +72,7 @@ SSL:
   stage1_method: "" # "barlowtwins" or "vicreg" or empty
   stage1_weight: 1.0
   stage2_method: "barlowtwins" # "barlowtwins" or "vicreg" or empty
-  stage2_weight: 1.0
+  stage2_weight: 0.1
 
   barlowtwins:
     proj_hid: 4096 #projector hidden layer size
