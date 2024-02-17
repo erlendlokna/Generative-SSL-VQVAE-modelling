@@ -1,5 +1,5 @@
 dataset:
-  dataset_name: "FordA"
+  dataset_name: "StarLightCurves"
   in_channels: 1
   data_scaling: True
   batch_sizes:
@@ -17,7 +17,7 @@ trainer_params:
     - 0
   max_epochs:
     stage1: 1500 #2000
-    stage2: 100 #1000 #1000 #10000
+    stage2: 1000 #1000 #1000 #10000
 
 encoder:
   dim: 64

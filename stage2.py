@@ -110,6 +110,7 @@ def train_stage2(
             id=config["dataset"]["dataset_name"],
         )
     # test
+    """
     print("evaluating...")
     dataset_name = config["dataset"]["dataset_name"]
     input_length = train_data_loader.dataset.X.shape[-1]
@@ -142,7 +143,7 @@ def train_stage2(
     evaluation.log_visual_inspection(min(200, evaluation.X_test.shape[0]), x_gen)
     evaluation.log_pca(min(1000, evaluation.X_test.shape[0]), x_gen, z_test, z_gen)
     evaluation.log_tsne(min(1000, evaluation.X_test.shape[0]), x_gen, z_test, z_gen)
-
+    """
     wandb.finish()
 
 
