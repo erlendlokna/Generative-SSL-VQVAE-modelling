@@ -135,7 +135,7 @@ class ExpMAGE(ExpBase):
         loss_hist = {
             "val_loss": val_loss,
             "val_prior_loss": val_prior_loss,
-            f"val_{self.SSL_method.name}-loss": val_ssl_loss,
+            f"val-{self.SSL_method.name}-loss": val_ssl_loss,
             "val_prior_loss1": val_prior_loss1,
             "val_prior_loss2": val_prior_loss2,
         }
@@ -164,7 +164,10 @@ class ExpMAGE(ExpBase):
     def test_step(self, batch, batch_idx):
         x, y = batch
 
-        test_prior_loss, test_ssl_loss = self.forward(batch, batch_idx)
+        test_prior_loss1, test_prior_loss2, test_ssl_loss = self.forward(
+            batch, batch_idx
+        )
+        test_prior_loss = 0.5 * (test_prior_loss1 + test_prior_loss2)
 
         test_loss = test_prior_loss + self.SSL_weight * test_ssl_loss
 
@@ -172,6 +175,7 @@ class ExpMAGE(ExpBase):
         loss_hist = {
             "test_loss": test_loss,
             "prior_loss": test_prior_loss,
+            f"test-{self.SSL_method.name}-loss": test_ssl_loss,
         }
 
         detach_the_unnecessary(loss_hist)

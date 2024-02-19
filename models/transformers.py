@@ -369,7 +369,7 @@ class AutoEncoderTransformer(nn.Module):
         # A unconditioned summary is interesting.
         _, summary = self.forward_encoder(token_emb, cls_emb)
 
-        return self.ln(summary)
+        return summary
 
     def filter_unmasked_tokens(self, token_emb, masks, device):
         if masks is None:
