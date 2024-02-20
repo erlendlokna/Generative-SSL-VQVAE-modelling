@@ -7,7 +7,7 @@ from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.loggers import WandbLogger
 from torch.utils.data import DataLoader
 
-from models.mage import MAGE
+from models.stage2.mage import MAGE
 from preprocessing.preprocess_ucr import UCRDatasetImporter
 from preprocessing.data_pipeline import build_data_pipeline
 from utils import load_yaml_param_settings, save_model, get_root_dir

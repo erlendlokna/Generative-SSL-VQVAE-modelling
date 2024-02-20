@@ -18,7 +18,7 @@ from pytorch_lightning.loggers import WandbLogger
 from preprocessing.preprocess_ucr import UCRDatasetImporter
 from experiments.exp_maskgit import ExpMaskGIT
 from experiments.exp_mage import ExpMAGE
-from evaluation.evaluation import Evaluation
+from evaluation.model_eval import Evaluation
 
 # from evaluation.evaluation import Evaluation
 from utils import (
@@ -66,6 +66,8 @@ def train_stage2(
             config,
             len(train_data_loader.dataset),
             n_classes,
+            train_data_loader,
+            test_data_loader,
         )
     else:
         train_exp = ExpMaskGIT(

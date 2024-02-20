@@ -13,9 +13,9 @@ import torch
 from einops import repeat, rearrange
 from typing import Callable
 
-from models.transformers import AutoEncoderTransformer
-from models.encoder_decoder import VQVAEEncoder, VQVAEDecoder
-from models.vq import VectorQuantize
+from models.stage2.transformers import BidirectionalTransformer
+from models.stage1.encoder_decoder import VQVAEEncoder, VQVAEDecoder
+from models.stage1.vq import VectorQuantize
 
 from utils import (
     compute_downsample_rate,
@@ -28,10 +28,11 @@ from utils import (
 )
 
 
-class MAGE(nn.Module):
+class MaskGIT(nn.Module):
     """
     references:
-
+        1. https://github.com/ML4ITS/TimeVQVAE/blob/main/generators/maskgit.py'
+        2. https://github.com/dome272/MaskGIT-pytorch/blob/cff485ad3a14b6ed5f3aa966e045ea2bc8c68ad8/transformer.py#L11
     """
 
     def __init__(
@@ -73,25 +74,26 @@ class MAGE(nn.Module):
             dim, config["VQVAE"]["codebook"]["size"], **config["VQVAE"]
         )
         # load trained models for encoder, decoder, and vq_models
-        stage1_ssl_method = config["SSL"]["stage1_method"]
+        ssl_method = config["SSL"]["stage1_method"]
+
         self.load(
             self.encoder,
             get_root_dir().joinpath("saved_models"),
             f"{ssl_config_filename(config, 'encoder')}-{dataset_name}.ckpt",
         )
-        print(f"{stage1_ssl_method} encoder loaded")
+        print(f"{ssl_method} encoder loaded")
         self.load(
             self.decoder,
             get_root_dir().joinpath("saved_models"),
             f"{ssl_config_filename(config, 'decoder')}-{dataset_name}.ckpt",
         )
-        print(f"{stage1_ssl_method} decoder loaded")
+        print(f"{ssl_method} decoder loaded")
         self.load(
             self.vq_model,
             get_root_dir().joinpath("saved_models"),
             f"{ssl_config_filename(config, 'vqmodel')}-{dataset_name}.ckpt",
         )
-        print(f"{stage1_ssl_method} vqmodel loaded")
+        print(f"{ssl_method} vqmodel loaded")
 
         # freeze the models for encoder, decoder, and vq_model
         freeze(self.encoder)
@@ -113,12 +115,11 @@ class MAGE(nn.Module):
         # pretrained discrete tokens
         embed = nn.Parameter(copy.deepcopy(self.vq_model._codebook.embed))
 
-        # Encoder Decoder Bidirectional Transformer
-        self.autoencoder_transformer = AutoEncoderTransformer(
+        self.transformer = BidirectionalTransformer(
             self.num_tokens,
             config["VQVAE"]["codebook"]["size"],
             config["VQVAE"]["codebook"]["dim"],
-            **config["MAGE"]["prior_model"],
+            **config["MaskGIT"]["prior_model"],
             n_classes=n_classes,
             pretrained_tok_emb=embed,
         )
@@ -152,59 +153,37 @@ class MAGE(nn.Module):
         )  # (b c h w), (b (h w) h), ...
         return z_q, indices
 
-    def forward(self, x, y, return_summaries: bool = False):
+    def forward(self, x, y):
         """
         x: (B, C, L)
         y: (B, 1)
+        straight from [https://github.com/dome272/MaskGIT-pytorch/blob/main/transformer.py]
         """
         device = x.device
         _, s = self.encode_to_z_q(x, self.encoder, self.vq_model)  # (b n)
 
-        # --- Creating Masked Tokens ---
-        # randomly sample two 't' values
-        t1 = np.random.uniform(0, 1)
-        t2 = np.random.uniform(0, 1)
+        # randomly sample `t`
+        t = np.random.uniform(0, 1)
 
-        n_masks1 = math.floor(self.gamma(t1) * s.shape[1])
-        n_masks2 = math.floor(self.gamma(t2) * s.shape[1])
+        # create masks
+        n_masks = math.floor(self.gamma(t) * s.shape[1])
+        rand = torch.rand(s.shape, device=device)  # (b n)
+        mask = torch.zeros(s.shape, dtype=torch.bool, device=device)
+        mask.scatter_(dim=1, index=rand.topk(n_masks, dim=1).indices, value=True)
 
-        rand1 = torch.rand(s.shape, device=device)  # (b n)
-        rand2 = torch.rand(s.shape, device=device)  # (b n)
+        # masked tokens
+        masked_indices = self.mask_token_ids * torch.ones_like(
+            s, device=device
+        )  # (b n)
+        s_M = mask * s + (~mask) * masked_indices  # (b n); `~` reverses bool-typed data
 
-        mask1 = torch.zeros(s.shape, dtype=torch.bool, device=device)
-        mask2 = torch.zeros(s.shape, dtype=torch.bool, device=device)
+        # prediction
+        logits = self.transformer(
+            s_M.detach(), class_condition=y
+        )  # (b n codebook_size)
+        target = s  # (b n)
 
-        mask1.scatter_(dim=1, index=rand1.topk(n_masks1, dim=1).indices, value=True)
-        mask2.scatter_(dim=1, index=rand2.topk(n_masks2, dim=1).indices, value=True)
-
-        # --- Encode-Decode transformers ---
-        logits1, summary1 = self.autoencoder_transformer(s, y, masks=mask1)
-        logits2, summary2 = self.autoencoder_transformer(s, y, masks=mask2)
-
-        logits = [logits1, logits2]
-        summaries = [summary1, summary2]
-        target = s
-
-        if return_summaries:
-            return logits, summaries, target
-        else:
-            return logits, target
-
-    @torch.no_grad()
-    def summarize(self, x):
-        _, s = self.encode_to_z_q(x, self.encoder, self.vq_model)
-        summary = self.autoencoder_transformer.summarize(s)
-        return summary
-
-    @torch.no_grad()
-    def summarize_dataloader(self, data_loader, device):
-        summary_data = []
-        for batch in data_loader:
-            x, _ = batch[0].to(device), batch[1].to(device)
-            summary = self.summarize(x)
-            for s in summary:
-                summary_data.append(s.tolist())
-        return np.array(summary_data)
+        return logits, target
 
     def gamma_func(self, mode="cosine"):
         if mode == "linear":
@@ -219,14 +198,12 @@ class MAGE(nn.Module):
             raise NotImplementedError
 
     def create_input_tokens_normal(self, num, num_tokens, mask_token_ids, device):
-        # Initialize blank tokens and create masked tokens by multiplying with mask_token_ids
+        """
+        returns masked tokens
+        """
         blank_tokens = torch.ones((num, num_tokens), device=device)
         masked_tokens = mask_token_ids * blank_tokens
-
-        # Create a mask with all True values, indicating all positions are masked
-        mask = torch.ones((num, num_tokens), dtype=torch.bool, device=device)
-
-        return masked_tokens.to(torch.int64), mask
+        return masked_tokens.to(torch.int64)
 
     def mask_by_random_topk(self, mask_len, probs, temperature=1.0, device="cpu"):
         """
@@ -259,28 +236,21 @@ class MAGE(nn.Module):
         masking = masking.bool()
         return masking
 
-    def sample(
+    def sample_good(
         self,
         s: torch.Tensor,
         unknown_number_in_the_beginning,
         class_condition: Union[torch.Tensor, None],
-        init_masking,
         guidance_scale: float,
         gamma: Callable,
         device,
     ):
-        masking = init_masking
-
         for t in range(self.T):
-            logits, _ = self.autoencoder_transformer(
-                embed_ind=s,
-                class_condition=class_condition,
-                masks=masking,
+            logits = self.transformer(
+                s, class_condition=class_condition
             )  # (b n codebook_size) == (b n K)
             if isinstance(class_condition, torch.Tensor):
-                logits_null, _ = self.autoencoder_transformer(
-                    embed_ind=s, class_condition=None, masks=masking
-                )
+                logits_null = self.transformer(s, class_condition=None)
                 logits = logits_null + guidance_scale * (logits - logits_null)
 
             sampled_ids = torch.distributions.categorical.Categorical(
@@ -341,7 +311,7 @@ class MAGE(nn.Module):
         :param num: number of samples
         :return: sampled token indices
         """
-        s, init_masks = self.create_input_tokens_normal(
+        s = self.create_input_tokens_normal(
             num, self.num_tokens, self.mask_token_ids, device
         )  # (b n)
 
@@ -356,11 +326,10 @@ class MAGE(nn.Module):
             else None
         )  # (b 1)
 
-        s = self.sample(
+        s = self.sample_good(
             s,
             unknown_number_in_the_beginning,
             class_condition,
-            init_masks,
             guidance_scale,
             gamma,
             device,
@@ -385,9 +354,6 @@ class MAGE(nn.Module):
         quantize = vq_model.project_out(quantize)  # (b n c)
 
         quantize = rearrange(quantize, "b n c -> b c n")  # (b c n) == (b c (h w))
-
-        # print("quantize.shape before reshaping:", quantize.shape)
-        # print(self.H_prime, self.W_prime)
 
         quantize = rearrange(
             quantize, "b c (h w) -> b c h w", h=self.H_prime, w=self.W_prime
@@ -415,7 +381,7 @@ class MAGE(nn.Module):
         """
 
         mask_token_ids = self.mask_token_ids
-        transformer = self.integrated_transformer
+        transformer = self.transformer
         vq_model = self.vq_model
 
         # compute the confidence scores for s_T
@@ -519,7 +485,7 @@ class MAGE(nn.Module):
         device,
     ):
         mask_token_ids = self.mask_token_ids
-        transformer = self.integrated_transformer
+        transformer = self.transformer
         vq_model = self.vq_model
         choice_temperature = self.choice_temperature
 

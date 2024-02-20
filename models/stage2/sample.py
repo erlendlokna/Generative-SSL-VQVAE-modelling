@@ -13,7 +13,7 @@ import numpy as np
 import torch
 import matplotlib.pyplot as plt
 
-from models.maskgit import MaskGIT
+from models.stage2.maskgit import MaskGIT
 from preprocessing.data_pipeline import build_data_pipeline
 from utils import get_root_dir, load_yaml_param_settings
 from tqdm import tqdm

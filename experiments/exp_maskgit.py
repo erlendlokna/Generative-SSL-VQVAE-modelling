@@ -6,8 +6,8 @@ import numpy as np
 import torch.nn.functional as F
 
 from experiments.exp_base import ExpBase, detach_the_unnecessary
-from models.maskgit import MaskGIT
-from evaluation.evaluation import Evaluation
+from models.stage2.maskgit import MaskGIT
+from evaluation.model_eval import Evaluation
 
 
 class ExpMaskGIT(ExpBase):

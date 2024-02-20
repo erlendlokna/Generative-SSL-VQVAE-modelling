@@ -74,9 +74,11 @@ class BidirectionalTransformer(nn.Module):
 
         # transformer
         self.pos_emb = nn.Embedding(self.num_tokens + 1, in_dim)
+
         self.class_condition_emb = nn.Embedding(
             n_classes + 1, in_dim
         )  # `+1` is for no-condition
+
         self.blocks = ContinuousTransformerWrapper(
             dim_in=in_dim,
             dim_out=in_dim,
@@ -202,6 +204,7 @@ class AutoEncoderTransformer(nn.Module):
         # Summary Embedding (learnable parameter). Randomly initialized
         # self.summary = nn.Parameter(torch.randn(1, 1, embed_dim))
         self.summary_emb = nn.Parameter(torch.zeros(1, 1, embed_dim))
+        torch.nn.init.normal_(self.summary_emb, std=0.1)
 
         # Encoder Transformer
         self.encoder_blocks = ContinuousTransformerWrapper(
@@ -288,6 +291,7 @@ class AutoEncoderTransformer(nn.Module):
             class_condition = class_uncondition
 
         cls_emb = self.class_condition_emb(class_condition.long())  # (b 1 dim)
+
         return cls_emb
 
     def forward_encoder(
@@ -305,13 +309,13 @@ class AutoEncoderTransformer(nn.Module):
         encoder_emb = self.encoder_blocks(encoder_emb)
 
         latent = encoder_emb[:, 2:, :]
-        summary = encoder_emb[:, 1, :]
+        summary = self.ln(encoder_emb[:, 1, :])
         return latent, summary
 
     def forward_decoder(
         self,
-        class_emb,
         padded_latent,
+        class_emb,
     ):
         # Takes in padded latent. I.e representation from encoder.
         n = padded_latent.size(1)
@@ -332,9 +336,6 @@ class AutoEncoderTransformer(nn.Module):
         masks=None,
     ):
         device = embed_ind.device
-        self.tok_emb = self.tok_emb.to(device)
-        self.pos_emb = self.pos_emb.to(device)
-        self.ln = self.ln.to(device)
 
         # embed_ind.to(device)
         batch_size = embed_ind.size(0)
@@ -359,35 +360,42 @@ class AutoEncoderTransformer(nn.Module):
 
         return logits, summary
 
-    @torch.no_grad()
-    def summarize(self, embed_ind, class_condition: Union[None, torch.Tensor] = None):
-        # Gives a "summary" of the embed_ind. Used for downstream classification.
+        y_te = self.test_data_loader.dataset.Y.flatten() @ torch.no_grad()
+
+    def summarize(
+        self, embed_ind, class_condition: Union[None, torch.Tensor] = None, masks=None
+    ):
+        # pass the input through the encoder transformer and return the summary
+
         device = embed_ind.device
         batch_size = embed_ind.size(0)
 
         token_emb = self.tok_emb(embed_ind)
         cls_emb = self.class_embedding(class_condition, batch_size, device)
-        # Here I assume we are interested in the summary without prior knowledge of class. Therefor None is standard.
-        # A unconditioned summary is interesting.
-        _, summary = self.forward_encoder(token_emb, cls_emb)
+        # Filter unmasked tokens
+        unmasked_tokens = self.filter_unmasked_tokens(token_emb, masks, device)
+        # Here I assume we are interested in the summary without prior knowledge of class. Therefore None is standard.
+
+        _, summary = self.forward_encoder(unmasked_tokens, cls_emb)
 
         return summary
 
-    def filter_unmasked_tokens(self, token_emb, masks, device):
+    def filter_unmasked_tokens(self, token_emb, masks):
         if masks is None:
             return token_emb
 
-        # Assuming masks is a boolean tensor indicating masked positions
+        # expand the mask to the same shape as the token embedding
+        # and filter out the masked tokens.
         masks_expanded = masks.unsqueeze(-1).expand_as(token_emb)
         unmasked_tokens = token_emb[~masks_expanded].view(
             token_emb.shape[0], -1, token_emb.shape[-1]
         )
 
-        return unmasked_tokens.to(device)
+        return unmasked_tokens
 
-    def pad_latent_representation(
-        self, latent, summary, masks, token_emb_shape, device
-    ):
+    def pad_latent_representation(self, latent, summary, masks, token_emb_shape):
+        # creates a empty tensor of the same shape as the token embedding
+        # and fills the masked positions with the summary and the unmasked positions with the latent.
         device = latent.device
         reconstructed = torch.zeros(token_emb_shape, device=device)
         if masks is None:
@@ -396,8 +404,6 @@ class AutoEncoderTransformer(nn.Module):
         else:
             masks_expanded = masks.unsqueeze(-1).expand_as(reconstructed)
             # Place latent representations back into their original positions
-            reconstructed[~masks_expanded] = latent.reshape(-1)  #
-            # Fill masked positions with the summary embedding
             summary_expanded = summary.unsqueeze(1).expand(-1, token_emb_shape[1], -1)
-            reconstructed[masks_expanded] = summary_expanded[masks_expanded]
-        return reconstructed.to(device)
+            reconstructed = torch.where(masks_expanded, summary_expanded, latent)
+        return reconstructed
