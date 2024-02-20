@@ -9,9 +9,11 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn import metrics
 
 from experiments.exp_base import ExpBase, detach_the_unnecessary
-from models.mage import MAGE
+from models.stage2.mage import MAGE
 from models.ssl import assign_ssl_method
-from evaluation.evaluation import ExpEvaluation
+from torch.cuda.amp import autocast, GradScaler
+
+from evaluation.downstream_eval import probes
 
 
 class ExpMAGE(ExpBase):
@@ -21,6 +23,8 @@ class ExpMAGE(ExpBase):
         config: dict,
         n_train_samples: int,
         n_classes: int,
+        train_data_loader,
+        test_data_loader,
     ):
         super().__init__()
         self.config = config
@@ -42,10 +46,9 @@ class ExpMAGE(ExpBase):
         )
         self.SSL_weight = config["SSL"]["stage2_weight"]
 
-        self.exp_evaluation = ExpEvaluation(
-            config,
-            self.device,
-        )
+        # For probes #
+        self.train_data_loader = train_data_loader
+        self.test_data_loader = test_data_loader
 
         print("MAGE initialized")
         print(f"TF-Encoder: {config['MAGE']['prior_model']['encoder_layers']}-layers")
@@ -59,7 +62,6 @@ class ExpMAGE(ExpBase):
 
         logits, summaries, target = self.MAGE(x, y, return_summaries=True)
 
-        summary1, summary2 = summaries  # unpack
         logits1, logits2 = logits
 
         prior_loss1 = F.cross_entropy(
@@ -69,6 +71,7 @@ class ExpMAGE(ExpBase):
             logits2.reshape(-1, logits2.size(-1)), target.reshape(-1)
         )
 
+        summary1, summary2 = summaries  # unpack
         ssl_loss = self.SSL_method(summary1, summary2)
 
         # maskgit sampling
@@ -140,7 +143,8 @@ class ExpMAGE(ExpBase):
             "val_prior_loss2": val_prior_loss2,
         }
 
-        wandb.log(loss_hist)
+        # if self.current_epoch % 10 == 0:
+        #    self.downstream_step()
 
         detach_the_unnecessary(loss_hist)
         return loss_hist
@@ -182,22 +186,39 @@ class ExpMAGE(ExpBase):
         return loss_hist
 
     @torch.no_grad()
-    def on_train_epoch_end(self) -> None:
-        """
-        if self.current_epoch % 10 == 0 or self.current_epoch == 0:
-            downstream_eval = self.exp_evaluation.downstream_summary_eval(
-                self.MAGE, device=self.device
-            )
-            wandb.log(downstream_eval)
+    def downstream_step(self):
+        # On summary
+        self.MAGE.eval()
+        S_tr, S_te = [], []
+        y_tr, y_te = [], []
 
-            sample_eval = self.exp_evaluation.sample_eval(self.MAGE, device=self.device)
-            wandb.log(sample_eval)
-        """
-        if self.current_epoch % 20 == 0 or self.current_epoch == 0:
-            # sample_eval_scores = self.exp_evaluation.sample_eval(
-            #    self.MAGE, device=self.device
-            # )
-            downstream_eval_scores = self.exp_evaluation.downstream_summary_eval(
-                self.MAGE, device=self.device
-            )
-            wandb.log(downstream_eval_scores)  # merge dictionaries
+        for batch in self.train_data_loader:
+            x, y = batch
+            with torch.no_grad():
+                S_tr.append(self.MAGE.summarize(x.to(self.device)).cpu().tolist())
+                y_tr.append(y.cpu().tolist())
+            del x, y
+
+        for batch in self.test_data_loader:
+            x, y = batch
+            with torch.no_grad():
+                S_te.append(self.MAGE.summarize(x.to(self.device)).cpu().tolist())
+                y_te.append(y.cpu().tolist())
+            del x, y
+        # flatten both lists
+        S_tr = np.concatenate(S_tr, axis=0)
+        S_te = np.concatenate(S_te, axis=0)
+        y_tr = np.concatenate(y_tr, axis=0)
+        y_te = np.concatenate(y_te, axis=0)
+
+        probe_scores = probes(S_tr, S_te, y_tr, y_te)
+
+        wandb.log(probe_scores)
+
+    def on_train_epoch_end(self):
+        if self.current_epoch % 50 == 0 and self.current_epoch > 0:
+            self.downstream_step()
+
+    def on_train_epoch_start(self):
+        if self.current_epoch == 0:
+            self.downstream_step()
