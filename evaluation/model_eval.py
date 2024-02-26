@@ -17,15 +17,13 @@ from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 
 from models.stage2.maskgit import MaskGIT
+from models.stage2.mage import MAGE
 from preprocessing.preprocess_ucr import UCRDatasetImporter
 from models.stage2.sample import unconditional_sample, conditional_sample
 from supervised_FCN.example_pretrained_model_loading import load_pretrained_FCN
 from supervised_FCN.example_compute_FID import calculate_fid
 from supervised_FCN.example_compute_IS import calculate_inception_score
-from utils import (
-    time_to_timefreq,
-    timefreq_to_time,
-)
+from utils import time_to_timefreq, timefreq_to_time, ssl_config_filename
 
 
 class Evaluation(object):
@@ -39,14 +37,11 @@ class Evaluation(object):
 
     def __init__(
         self,
-        generative_model,
         subset_dataset_name: str,
         gpu_device_index: int,
         config: dict,
         batch_size: int = 256,
     ):
-
-        self.generative_model = generative_model
         self.subset_dataset_name = subset_dataset_name
         self.device = torch.device(gpu_device_index)
         self.batch_size = batch_size
@@ -65,7 +60,7 @@ class Evaluation(object):
         )
         self.X_test = self.X_test.numpy()
 
-    def sample(
+    def sampleMaskGit(
         self,
         n_samples: int,
         input_length: int,
@@ -75,24 +70,76 @@ class Evaluation(object):
     ):
         assert kind in ["unconditional", "conditional"]
 
+        # build
+        maskgit = MaskGIT(
+            input_length,
+            **self.config["MaskGIT"],
+            config=self.config,
+            n_classes=n_classes,
+        ).to(self.device)
+
+        # load
+        fname = f"{ssl_config_filename(self.config, 'maskgit')}-{self.subset_dataset_name}.ckpt"
+        try:
+            ckpt_fname = os.path.join("saved_models", fname)
+            maskgit.load_state_dict(torch.load(ckpt_fname), strict=False)
+        except FileNotFoundError:
+            ckpt_fname = Path(tempfile.gettempdir()).joinpath(fname)
+            maskgit.load_state_dict(torch.load(ckpt_fname), strict=False)
+
         # inference mode
-        self.generative_model.eval()
+        maskgit.eval()
 
         # sampling
         if kind == "unconditional":
             x_new = unconditional_sample(
-                self.generative_model,
-                n_samples,
-                self.device,
-                batch_size=self.batch_size,
+                maskgit, n_samples, self.device, batch_size=self.batch_size
             )  # (b c l); b=n_samples, c=1 (univariate)
         elif kind == "conditional":
             x_new = conditional_sample(
-                self.generative_model,
-                n_samples,
-                self.device,
-                class_index,
-                self.batch_size,
+                maskgit, n_samples, self.device, class_index, self.batch_size
+            )  # (b c l); b=n_samples, c=1 (univariate)
+        else:
+            raise ValueError
+
+        return x_new
+
+    def sampleMAGE(
+        self,
+        n_samples: int,
+        input_length: int,
+        n_classes: int,
+        kind: str,
+        class_index: int = -1,
+    ):
+        assert kind in ["unconditional", "conditional"]
+
+        mage = MAGE(
+            input_length,
+            **self.config["MaskGIT"],
+            config=self.config,
+            n_classes=n_classes,
+        ).to(self.device)
+
+        fname = f"{ssl_config_filename(self.config, 'MAGE')}-{self.subset_dataset_name}.ckpt"
+        try:
+            ckpt_fname = os.path.join("saved_models", fname)
+            mage.load_state_dict(torch.load(ckpt_fname), strict=False)
+        except FileNotFoundError:
+            ckpt_fname = Path(tempfile.gettempdir()).joinpath(fname)
+            mage.load_state_dict(torch.load(ckpt_fname), strict=False)
+
+        # inference mode
+        mage.eval()
+
+        # sampling
+        if kind == "unconditional":
+            x_new = unconditional_sample(
+                mage, n_samples, self.device, batch_size=self.batch_size
+            )  # (b c l); b=n_samples, c=1 (univariate)
+        elif kind == "conditional":
+            x_new = conditional_sample(
+                mage, n_samples, self.device, class_index, self.batch_size
             )  # (b c l); b=n_samples, c=1 (univariate)
         else:
             raise ValueError
@@ -164,9 +211,7 @@ class Evaluation(object):
         IS_mean, IS_std = calculate_inception_score(p_yx_gen)
         return IS_mean, IS_std
 
-    def visual_inspection(
-        self, n_plot_samples: int, X_gen, ylim: tuple = (-5, 5), log=True
-    ):
+    def log_visual_inspection(self, n_plot_samples: int, X_gen, ylim: tuple = (-5, 5)):
         # `X_test`
         sample_ind = np.random.randint(0, self.X_test.shape[0], n_plot_samples)
         fig, axes = plt.subplots(2, 1, figsize=(4, 4))
@@ -183,19 +228,11 @@ class Evaluation(object):
         plt.grid()
 
         plt.tight_layout()
-        if log:
-            wandb.log({"visual inspection": wandb.Image(plt)})
-            plt.close()
-        else:
-            plt.show()
+        wandb.log({"visual inspection": wandb.Image(plt)})
+        plt.close()
 
-    def pca(
-        self,
-        n_plot_samples: int,
-        X_gen,
-        z_test: np.ndarray,
-        z_gen: np.ndarray,
-        log=True,
+    def log_pca(
+        self, n_plot_samples: int, X_gen, z_test: np.ndarray, z_gen: np.ndarray
     ):
         X_gen = X_gen.cpu().numpy()
 
@@ -219,11 +256,9 @@ class Evaluation(object):
         plt.scatter(X_embedded_gen[:, 0], X_embedded_gen[:, 1], alpha=0.1, label="gen")
         plt.legend()
         plt.tight_layout()
-        if log:
-            wandb.log({"PCA-data_space": wandb.Image(plt)})
-            plt.close()
-        else:
-            plt.show()
+        wandb.log({"PCA-data_space": wandb.Image(plt)})
+        plt.close()
+
         # PCA: latent space
         pca = PCA(n_components=2)
         z_embedded_test = pca.fit_transform(z_test.squeeze()[sample_ind_test].squeeze())
@@ -232,24 +267,16 @@ class Evaluation(object):
         plt.figure(figsize=(4, 4))
         # plt.title("PCA in the representation space by the trained encoder");
         plt.scatter(
-            z_embedded_test[:, 0], z_embedded_test[:, 1], alpha=0.3, label="test"
+            z_embedded_test[:, 0], z_embedded_test[:, 1], alpha=0.1, label="test"
         )
-        plt.scatter(z_embedded_gen[:, 0], z_embedded_gen[:, 1], alpha=0.3, label="gen")
+        plt.scatter(z_embedded_gen[:, 0], z_embedded_gen[:, 1], alpha=0.1, label="gen")
         plt.legend()
         plt.tight_layout()
-        if log:
-            wandb.log({"PCA-latent_space": wandb.Image(plt)})
-            plt.close()
-        else:
-            plt.show()
+        wandb.log({"PCA-latent_space": wandb.Image(plt)})
+        plt.close()
 
-    def tsne(
-        self,
-        n_plot_samples: int,
-        X_gen,
-        z_test: np.ndarray,
-        z_gen: np.ndarray,
-        log=True,
+    def log_tsne(
+        self, n_plot_samples: int, X_gen, z_test: np.ndarray, z_gen: np.ndarray
     ):
         X_gen = X_gen.cpu().numpy()
 
@@ -270,9 +297,8 @@ class Evaluation(object):
         plt.scatter(X_embedded[:, 0], X_embedded[:, 1], c=labels, alpha=0.1)
         # plt.legend()
         plt.tight_layout()
-        if log:
-            wandb.log({"TNSE-data_space": wandb.Image(plt)})
-            plt.close()
+        wandb.log({"TNSE-data_space": wandb.Image(plt)})
+        plt.close()
 
         # TNSE: latent space
         Z = np.concatenate(
@@ -287,8 +313,5 @@ class Evaluation(object):
         plt.scatter(Z_embedded[:, 0], Z_embedded[:, 1], c=labels, alpha=0.1)
         # plt.legend()
         plt.tight_layout()
-        if log:
-            wandb.log({"TSNE-latent_space": wandb.Image(plt)})
-            plt.close()
-        else:
-            plt.show()
+        wandb.log({"TSNE-latent_space": wandb.Image(plt)})
+        plt.close()

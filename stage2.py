@@ -112,31 +112,36 @@ def train_stage2(
             id=config["dataset"]["dataset_name"],
         )
     # test
-    """
+
     print("evaluating...")
     dataset_name = config["dataset"]["dataset_name"]
     input_length = train_data_loader.dataset.X.shape[-1]
     n_classes = len(np.unique(train_data_loader.dataset.Y))
+    evaluation = Evaluation(
+        subset_dataset_name=dataset_name,
+        gpu_device_index=gpu_device_idx,
+        config=config,
+        batch_size=config["dataset"]["batch_sizes"]["stage2"],
+    )
+
     if ssl_stage2:
-        evaluation = Evaluation(
-            generative_model=train_exp.MAGE,
-            subset_dataset_name=dataset_name,
-            gpu_device_index=gpu_device_idx,
-            config=config,
+        x_gen = evaluation.sampleMAGE(
+            max(evaluation.X_test.shape[0], config["dataset"]["batch_sizes"]["stage2"]),
+            input_length,
+            n_classes,
+            "unconditional",
         )
     else:
-        evaluation = Evaluation(
-            generative_model=train_exp.maskgit,
-            subset_dataset_name=dataset_name,
-            gpu_device_index=gpu_device_idx,
-            config=config,
+        x_gen = evaluation.sampleMaskGit(
+            max(
+                evaluation.X_test.shape[0],
+                config["dataset"]["batch_sizes"]["stage2"],
+            ),
+            input_length,
+            n_classes,
+            "unconditional",
         )
-    _, _, x_gen = evaluation.sample(
-        max(evaluation.X_test.shape[0], config["dataset"]["batch_sizes"]["stage2"]),
-        input_length,
-        n_classes,
-        "unconditional",
-    )
+
     z_test, z_gen = evaluation.compute_z(x_gen)
     fid, (z_test, z_gen) = evaluation.fid_score(z_test, z_gen)
     IS_mean, IS_std = evaluation.inception_score(x_gen)
@@ -145,7 +150,7 @@ def train_stage2(
     evaluation.log_visual_inspection(min(200, evaluation.X_test.shape[0]), x_gen)
     evaluation.log_pca(min(1000, evaluation.X_test.shape[0]), x_gen, z_test, z_gen)
     evaluation.log_tsne(min(1000, evaluation.X_test.shape[0]), x_gen, z_test, z_gen)
-    """
+
     wandb.finish()
 
 

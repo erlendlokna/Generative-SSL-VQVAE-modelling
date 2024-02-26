@@ -109,6 +109,7 @@ class MAGE(nn.Module):
         # latent space dim
         self.H_prime = self.encoder.H_prime.item()
         self.W_prime = self.encoder.W_prime.item()
+
         # pretrained discrete tokens
         embed = nn.Parameter(copy.deepcopy(self.vq_model._codebook.embed))
 
@@ -159,14 +160,13 @@ class MAGE(nn.Module):
         device = x.device
         _, s = self.encode_to_z_q(x, self.encoder, self.vq_model)  # (b n)
 
-        # --- Creating Masked Tokens ---
-
-        mask1 = self.generate_mage_masks(s, device)
-        mask2 = self.generate__mage_masks(s, device)
+        # --- Generating masking ---
+        s_M1, token_all_mask1 = self.generate_masked_tokens(s, device)
+        s_M2, token_all_mask2 = self.generate_masked_tokens(s, device)
 
         # --- Encode-Decode transformers ---
-        logits1, summary1 = self.autoencoder_transformer(s, y, masks=mask1)
-        logits2, summary2 = self.autoencoder_transformer(s, y, masks=mask2)
+        logits1, summary1 = self.autoencoder_transformer(s_M1, y, token_all_mask1)
+        logits2, summary2 = self.autoencoder_transformer(s_M2, y, token_all_mask2)
 
         logits = [logits1, logits2]
         summaries = [summary1, summary2]
@@ -177,43 +177,61 @@ class MAGE(nn.Module):
         else:
             return logits, target
 
-    def generate_mage_masks(self, s, device):
-        # Method used in MAGE paper. I think.
+    def generate_masked_tokens(self, s, device):
+        s_M = s.clone()
+
+        t = np.random.uniform(0, 1)
+
+        n_masks = math.floor(self.gamma(t) * s_M.shape[1])
+
+        rand = torch.rand(s_M.shape, device=device)  # (b n)
+
+        token_all_mask = torch.zeros(s_M.shape, dtype=torch.bool, device=device)
+
+        token_all_mask.scatter_(
+            dim=1, index=rand.topk(n_masks, dim=1).indices, value=True
+        )
+
+        s_M[token_all_mask.nonzero(as_tuple=True)] = self.mask_token_ids  # (b n)
+
+        return s_M, token_all_mask
+
+    """
+    def generate_mage_mask_drop(self, s, device, drop_rate=0.5):
+        # Method used in MAGE paper.
+        s_M = s.clone()
         # sample a masking ratio from a truncated Gaussian distribution
-        mr = truncnorm(
+        mask_rate = truncnorm(
             a=(0.5 - 0.55) / 0.1, b=(1 - 0.55) / 0.1, loc=0.55, scale=0.1
         ).rvs()
 
         # calculate the number of tokens to mask and to drop
-        l = s.shape[1]
-        n_masks = int(mr * l)
-        n_drops = int(0.5 * l)
+        bsz, seq_len = s_M.size()
 
-        # create a mask with the specified number of masked tokens
-        rand = torch.rand(s.shape, device=device)  # (b n)
-        mask = torch.zeros(s.shape, dtype=torch.bool, device=device)
-        mask.scatter_(dim=1, index=rand.topk(n_masks, dim=1).indices, value=True)
+        n_masks = int(np.ceil(mask_rate * seq_len))
+        n_drops = int(np.ceil(drop_rate * seq_len))
 
-        # randomly drop half of the masked tokens
-        drop_mask = torch.zeros(s.shape, dtype=torch.bool, device=device)
-        drop_indices = torch.multinomial(mask.float(), n_drops, replacement=False)
-        drop_mask.scatter_(dim=1, index=drop_indices, value=True)
-        mask[drop_mask] = False
+        while True:
+            noise = torch.rand(s.shape, device=device)  # (b n)
+            sorted_noise, _ = torch.sort(noise, dim=1)
 
-        return mask
+            cutoff_drop = sorted_noise[:, n_drops - 1 : n_drops]
+            cutoff_mask = sorted_noise[:, n_masks - 1 : n_masks]
 
-    def generate_maskgit_masks(self, s, device):
-        # Method used in TimeVQVAE
-        # randomly sample two 't' values
-        t = np.random.uniform(0, 1)
+            token_drop_mask = (noise <= cutoff_drop).float()
+            token_all_mask = (noise <= cutoff_mask).float()
+            if (
+                token_drop_mask.sum() == bsz * n_drops
+                and token_all_mask.sum() == bsz * n_masks
+            ):
+                break
+            else:
+                print("whoopsie, universe not happy..")
 
-        n_masks = math.floor(self.gamma(t) * s.shape[1])
+        s_M[token_all_mask.nonzero(as_tuple=True)] = self.mask_token_ids  # (b n)
 
-        rand = torch.rand(s.shape, device=device)  # (b n)
-
-        mask = torch.zeros(s.shape, dtype=torch.bool, device=device)
-
-        mask.scatter_(dim=1, index=rand.topk(n_masks, dim=1).indices, value=True)
+        return s_M, token_all_mask, token_drop_mask
+    """
 
     @torch.no_grad()
     def summarize(self, x, y=None):
@@ -294,7 +312,7 @@ class MAGE(nn.Module):
             logits, _ = self.autoencoder_transformer(
                 embed_ind=s,
                 class_condition=class_condition,
-                masks=masking,
+                token_all_mask=masking,
             )  # (b n codebook_size) == (b n K)
             if isinstance(class_condition, torch.Tensor):
                 logits_null, _ = self.autoencoder_transformer(

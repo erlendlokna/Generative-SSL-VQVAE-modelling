@@ -93,17 +93,18 @@ def ssl_config_filename(config, model_type):
         SSL_config["stage2_weight"],
     )
 
-    vqvae_text = ""
-    maskgit_text = ""
+    stage1_text = ""
+    stage2_text = ""
 
     if stage1_method != "":
-        vqvae_text = f"{stage1_method}_{stage1_weight}_"
+        stage1_text = f"{stage1_method}_{stage1_weight}_"
 
-    if stage2_method != "" and model_type == "maskgit":
-        maskgit_text = f"_{stage2_method}_{stage2_weight}"
+    # Only MAGE model has SSL on stage2
+    if stage2_method != "" and model_type == "MAGE":
+        stage2_text = f"_{stage2_method}_{stage2_weight}"
 
     filename_parts = [
-        part for part in [vqvae_text, model_type, maskgit_text] if part
+        part for part in [stage1_text, model_type, stage2_text] if part
     ]  # Filters out empty strings
 
     return "".join(filename_parts)

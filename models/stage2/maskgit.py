@@ -109,8 +109,8 @@ class MaskGIT(nn.Module):
         self.num_tokens = self.encoder.num_tokens.item()
 
         # latent space dim
-        self.H_prime = self.encoder.H_prime
-        self.W_prime = self.encoder.W_prime
+        self.H_prime = self.encoder.H_prime.item()
+        self.W_prime = self.encoder.W_prime.item()
 
         # pretrained discrete tokens
         embed = nn.Parameter(copy.deepcopy(self.vq_model._codebook.embed))
