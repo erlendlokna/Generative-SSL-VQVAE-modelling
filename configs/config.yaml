@@ -17,7 +17,7 @@ trainer_params:
     - 0
   max_epochs:
     stage1: 1500 #2000
-    stage2: 2 #1000 #1000 #10000
+    stage2: 10000 #1000 #1000 #10000
 
 encoder:
   dim: 64

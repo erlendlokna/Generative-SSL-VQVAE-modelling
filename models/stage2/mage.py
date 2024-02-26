@@ -316,7 +316,7 @@ class MAGE(nn.Module):
             )  # (b n codebook_size) == (b n K)
             if isinstance(class_condition, torch.Tensor):
                 logits_null, _ = self.autoencoder_transformer(
-                    embed_ind=s, class_condition=None, masks=masking
+                    embed_ind=s, class_condition=None, token_all_mask=masking
                 )
                 logits = logits_null + guidance_scale * (logits - logits_null)
 
