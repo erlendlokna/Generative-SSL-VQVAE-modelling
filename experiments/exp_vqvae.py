@@ -97,7 +97,7 @@ class Exp_VQVAE(ExpBase):
         z_q, indices, vq_loss, perplexity = quantize(z, self.vq_model)
 
         uhat = self.decoder(z_q)
-        xhat = timefreq_to_time(uhat, self.n_fft, C, original_length=x.size(2))
+        xhat = timefreq_to_time(uhat, self.n_fft, C)
 
         recons_loss["time"] = F.mse_loss(x, xhat)
         recons_loss["timefreq"] = F.mse_loss(u, uhat)
