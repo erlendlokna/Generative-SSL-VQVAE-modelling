@@ -335,22 +335,45 @@ class AutoEncoderTransformer(nn.Module):
         embed_ind,
         class_condition: Union[None, torch.Tensor] = None,
         token_all_mask=None,
+        token_drop_mask=None,
     ):
         device = embed_ind.device
 
         token_emb = self.tok_emb(embed_ind).to(device)
         bsz, seq_len, emb_dim = token_emb.size()
 
+        # generating class embedding
         cls_emb = self.class_embedding(class_condition, bsz, device)
 
-        # Encoding to latent representation and summary
-        latent, summary = self.forward_encoder(cls_emb, token_emb)
-        # Masking the latent representation with the summary
-        latent_with_summary = torch.where(
-            token_all_mask.unsqueeze(-1).bool(), summary.unsqueeze(1), latent
+        # Logic for encoder tokens
+        if token_drop_mask is not None:
+            token_keep_mask = 1 - token_drop_mask.float()
+        else:
+            token_drop_mask = torch.zeros(bsz, seq_len).float().to(device)
+            token_keep_mask = 1 - token_all_mask.float()
+
+        # Grabbing unmasked tokens for encoder.
+        encoder_tokens = token_emb[token_keep_mask.nonzero(as_tuple=True)].view(
+            bsz, -1, emb_dim
         )
-        # Decoding to logits prediction
-        logits = self.forward_decoder(cls_emb, latent_with_summary).to(device)
+
+        # Encoding to latent representation and summary
+        latent, summary = self.forward_encoder(cls_emb, encoder_tokens)
+
+        # --- Padding process ---:
+        summary_expanded = summary.unsqueeze(1).expand(-1, seq_len, -1)
+
+        padded = summary_expanded.clone()
+
+        # scattering the latent representation in the kept positions
+        padded[token_keep_mask.nonzero(as_tuple=True)] = latent.reshape(-1, emb_dim)
+        # padding the masked positions with the summary
+        padded = torch.where(
+            token_all_mask.unsqueeze(-1).bool(), summary_expanded, padded
+        )
+
+        # Decoding padded latent representatio to logits prediction
+        logits = self.forward_decoder(cls_emb, padded).to(device)
 
         return logits, summary
 

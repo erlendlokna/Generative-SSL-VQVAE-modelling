@@ -40,7 +40,6 @@ def load_args():
 
 
 def train_stage1(
-    ssl_stage1: bool,
     config: dict,
     train_data_loader: DataLoader,
     test_data_loader: DataLoader,
@@ -57,6 +56,7 @@ def train_stage1(
     if wandb_project_case_idx != "":
         project_name += f"-{wandb_project_case_idx}"
 
+    ssl_stage1 = config["SSL"]["stage1_method"] != ""
     input_length = train_data_loader.dataset.X.shape[-1]
 
     if ssl_stage1:
@@ -145,7 +145,6 @@ if __name__ == "__main__":
     # Train VQVAE without validation
     print("Starting training...")
     train_stage1(
-        ssl_stage1=stage1_ssl_method,
         config=config,
         train_data_loader=train_data_loader,
         test_data_loader=test_data_loader,

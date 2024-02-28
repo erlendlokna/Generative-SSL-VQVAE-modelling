@@ -160,13 +160,21 @@ class MAGE(nn.Module):
         device = x.device
         _, s = self.encode_to_z_q(x, self.encoder, self.vq_model)  # (b n)
 
-        # --- Generating masking ---
-        s_M1, token_all_mask1 = self.generate_masked_tokens(s, device)
-        s_M2, token_all_mask2 = self.generate_masked_tokens(s, device)
+        # --- Generating mask and drop ---
+        s_M1, token_all_mask1, token_drop_mask1 = self.generate_mage_mask_drop(
+            s, device
+        )
+        s_M2, token_all_mask2, token_drop_mask2 = self.generate_mage_mask_drop(
+            s, device
+        )
 
         # --- Encode-Decode transformers ---
-        logits1, summary1 = self.autoencoder_transformer(s_M1, y, token_all_mask1)
-        logits2, summary2 = self.autoencoder_transformer(s_M2, y, token_all_mask2)
+        logits1, summary1 = self.autoencoder_transformer(
+            s_M1, y, token_all_mask1, token_drop_mask1
+        )
+        logits2, summary2 = self.autoencoder_transformer(
+            s_M2, y, token_all_mask2, token_drop_mask2
+        )
 
         logits = [logits1, logits2]
         summaries = [summary1, summary2]
@@ -177,6 +185,7 @@ class MAGE(nn.Module):
         else:
             return logits, target
 
+    """
     def generate_masked_tokens(self, s, device):
         s_M = s.clone()
 
@@ -195,8 +204,8 @@ class MAGE(nn.Module):
         s_M[token_all_mask.nonzero(as_tuple=True)] = self.mask_token_ids  # (b n)
 
         return s_M, token_all_mask
-
     """
+
     def generate_mage_mask_drop(self, s, device, drop_rate=0.5):
         # Method used in MAGE paper.
         s_M = s.clone()
@@ -231,7 +240,6 @@ class MAGE(nn.Module):
         s_M[token_all_mask.nonzero(as_tuple=True)] = self.mask_token_ids  # (b n)
 
         return s_M, token_all_mask, token_drop_mask
-    """
 
     @torch.no_grad()
     def summarize(self, x, y=None):

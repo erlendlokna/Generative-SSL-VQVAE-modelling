@@ -86,9 +86,18 @@ class Exp_NC_VQVAE(ExpBase):
         self.SSL_method = assign_ssl_method(dim, config, config["SSL"]["stage1_method"])
         self.SSL_loss_weight = config["SSL"]["stage1_weight"]
 
+        self.p_aug_view = config["SSL"]["p_aug_view"]
+
     def forward(self, batch, training=True):
         if training:
-            (x, x_aug), y = batch  # x and augmented x
+            (x, x_alt_view), y = batch  # x and augmented / alternate x
+            swapped = False
+            # Swap views
+            p = np.random.uniform(0, 1)
+            if p < self.p_aug_view:
+                x, x_alt_view = x_alt_view, x
+                swapped = True
+
         else:
             x, y = batch
 
@@ -108,11 +117,11 @@ class Exp_NC_VQVAE(ExpBase):
 
         if training:
             # --- Encode augmented view ---
-            u_aug = time_to_timefreq(x_aug, self.n_fft, C)  # STFT
+            u_alt_view = time_to_timefreq(x_alt_view, self.n_fft, C)  # STFT
 
-            z_aug = self.encoder(u_aug)  # Encode
+            z_alt_view = self.encoder(u_alt_view)  # Encode
             # --- SSL loss ---
-            SSL_loss = self.SSL_method(z, z_aug)
+            SSL_loss = self.SSL_method(z, z_alt_view)
         else:
             SSL_loss = torch.tensor(0.0)  # no SSL loss if validation step
 
@@ -138,17 +147,20 @@ class Exp_NC_VQVAE(ExpBase):
 
             ax.plot(
                 x[b, c].cpu(),
-                label=f"original",
+                label=f"original" if not swapped else f"augmented view",
                 c="gray",
                 alpha=1,
             )
             ax.plot(
-                x_aug[b, c].cpu(),
-                label=f"augmented view",
+                x_alt_view[b, c].cpu(),
+                label=f"augmented view" if not swapped else f"original",
                 c="gray",
                 alpha=0.3,
             )
-            ax.plot(xhat[b, c].detach().cpu(), label=f"reconstruction")
+            ax.plot(
+                xhat[b, c].detach().cpu(),
+                label=f"reconstruction of {'augmented' if swapped else 'original'} view",
+            )
             ax.set_title("x")
             ax.set_ylim(-5, 5)
             fig.legend()
