@@ -199,7 +199,8 @@ class AutoEncoderTransformer(nn.Module):
         self.class_condition_emb = nn.Embedding(n_classes + 1, in_dim)
 
         # positional embedding
-        self.pos_emb = nn.Embedding(num_tokens + 1, in_dim)
+        self.pos_emb_encoder = nn.Embedding(num_tokens + 1, in_dim)
+        self.pos_emb_decoder = nn.Embedding(num_tokens + 1, in_dim)
 
         # Summary Embedding (learnable parameter). Randomly initialized
         # self.summary = nn.Parameter(torch.randn(1, 1, embed_dim))
@@ -364,14 +365,12 @@ class AutoEncoderTransformer(nn.Module):
         summary_expanded = summary.unsqueeze(1).expand(-1, seq_len, -1)
 
         padded = summary_expanded.clone()
-
         # scattering the latent representation in the kept positions
         padded[token_keep_mask.nonzero(as_tuple=True)] = latent.reshape(-1, emb_dim)
         # padding the masked positions with the summary
         padded = torch.where(
             token_all_mask.unsqueeze(-1).bool(), summary_expanded, padded
         )
-
         # Decoding padded latent representatio to logits prediction
         logits = self.forward_decoder(cls_emb, padded).to(device)
 

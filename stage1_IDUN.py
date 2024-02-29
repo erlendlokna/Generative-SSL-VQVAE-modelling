@@ -24,7 +24,7 @@ from stage1 import train_stage1
 
 UCR_SUBSET = [
     "ElectricDevices",
-    "StarLightCurves",
+    # "StarLightCurves",
     # "Wafer",
     # "ECG5000",
     # "TwoPatterns",
@@ -42,6 +42,7 @@ SSL_WEIGHTS = {"barlowtwins": 1.0, "vicreg": 0.01, "": 0}
 def run_experiments():
     config_dir = get_root_dir().joinpath("configs", "config.yaml")
     config = load_yaml_param_settings(config_dir)
+    config["trainer_params"]["max_epochs"]["stage1"] = 1
     batch_size = config["dataset"]["batch_sizes"]["stage1"]
 
     for dataset in UCR_SUBSET:
