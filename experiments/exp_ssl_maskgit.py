@@ -63,20 +63,24 @@ class ExpSSLMaskGIT(ExpBase):
         # projecting to ssl latent space
         latents_reg_full_proj = self.ssl_full_latent(latents_reg_full)
         latents_comp_full_proj = self.ssl_full_latent(latents_comp_full)
+        
         latents_reg_masked_proj = self.ssl_latent(latents_reg_masked)
         latents_comp_masked_proj = self.ssl_latent(latents_comp_masked)
+        
         latents_reg_unmasked_proj = self.ssl_latent(latents_reg_unmasked)
         latents_comp_unmasked_proj = self.ssl_latent(latents_comp_unmasked)
 
-        # calculating ssl losses in latent space
-        full_ssl_loss = self.ssl_full_latent.loss_function(
+        # calculating ssl losses for the projection
+        full_similarity = self.ssl_full_latent.loss_function(
             latents_reg_full_proj, latents_comp_full_proj
         )
-        masked_ssl_loss = self.ssl_latent.loss_function(
-            latents_reg_masked_proj, latents_comp_masked_proj
+    
+        unmasked_similarity = self.ssl_latent.loss_function(
+            latents_reg_unmasked_proj, latents_comp_masked_proj
         )
-        unmasked_ssl_loss = self.ssl_latent.loss_function(
-            latents_reg_unmasked_proj, latents_comp_unmasked_proj
+
+        masked_similarity = self.ssl_latent.loss_function(
+            latents_reg_masked_proj, latents_comp_unmasked_proj
         )
 
         # prior loss
@@ -106,16 +110,16 @@ class ExpSSLMaskGIT(ExpBase):
             wandb.log({f"ssl maskgit sample": wandb.Image(plt)})
             plt.close()
 
-        return prior_loss, full_ssl_loss, masked_ssl_loss, unmasked_ssl_loss
+        return prior_loss, full_similarity, masked_similarity, unmasked_similarity
 
     def training_step(self, batch, batch_idx):
         x, y = batch
 
-        prior_loss, full_ssl_loss, masked_ssl_loss, unmasked_ssl_loss = self.forward(
+        prior_loss, full_similarity, masked_similarity, unmasked_similarity = self.forward(
             batch, batch_idx
         )
 
-        ssl_loss = 1.0 / 3 * (full_ssl_loss + masked_ssl_loss + unmasked_ssl_loss)
+        ssl_loss = 1.0 / 3 * (full_similarity + masked_similarity + unmasked_similarity)
 
         loss = prior_loss + self.SSL_weight * ssl_loss
 
@@ -129,9 +133,9 @@ class ExpSSLMaskGIT(ExpBase):
         loss_hist = {
             "loss": loss,
             "prior_loss": prior_loss,
-            f"full_{ssl_method}_loss": full_ssl_loss,
-            f"masked_{ssl_method}_loss": masked_ssl_loss,
-            f"unmasked_{ssl_method}_loss": unmasked_ssl_loss,
+            f"full_{ssl_method}_loss": full_similarity,
+            f"masked_{ssl_method}_loss": masked_similarity,
+            f"unmasked_{ssl_method}_loss": unmasked_similarity,
         }
 
         wandb.log(loss_hist)
@@ -142,9 +146,9 @@ class ExpSSLMaskGIT(ExpBase):
     def validation_step(self, batch, batch_idx):
         (
             prior_loss,
-            full_ssl_loss,
-            masked_ssl_loss,
-            unmasked_ssl_loss,
+            full_similarity,
+            masked_similarity,
+            unmasked_similarity,
         ) = self.forward(batch, batch_idx)
 
         val_loss = prior_loss
@@ -153,9 +157,9 @@ class ExpSSLMaskGIT(ExpBase):
         loss_hist = {
             "val_loss": val_loss,
             "val_prior_loss": prior_loss,
-            "val_full_ssl_loss": full_ssl_loss,
-            "val_masked_ssl_loss": masked_ssl_loss,
-            "val_unmasked_ssl_loss": unmasked_ssl_loss,
+            "val_full_ssl_loss": full_similarity,
+            "val_masked_ssl_loss": masked_similarity,
+            "val_unmasked_ssl_loss": unmasked_similarity,
         }
 
         detach_the_unnecessary(loss_hist)

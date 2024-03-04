@@ -20,9 +20,8 @@ import torch
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
-
 import wandb
-from experiments.exp_base import test_model_representations
+from evaluation.downstream_eval import probes
 
 
 class Exp_VQVAE(ExpBase):
@@ -31,8 +30,13 @@ class Exp_VQVAE(ExpBase):
         input_length,
         config: dict,
         n_train_samples: int,
+        probe_train_dl = None,
+        probe_test_dl = None,
     ):
         super().__init__()
+        self.probe_train_dl = probe_train_dl
+        self.probe_test_dl = probe_test_dl
+        self.probe_test_per = config["VQVAE"]["probe_test_per"]
 
         self.config = config
         self.T_max = config["trainer_params"]["max_epochs"]["stage1"] * (
@@ -78,6 +82,8 @@ class Exp_VQVAE(ExpBase):
             self.fcn.eval()
             freeze(self.fcn)
 
+        
+
     def forward(self, batch):
         x, y = batch
 
@@ -111,7 +117,7 @@ class Exp_VQVAE(ExpBase):
 
         # plot `x` and `xhat`
         r = np.random.rand()
-        if self.training and r <= 0.008:
+        if self.training and r <= 0.001:
             b = np.random.randint(0, x.shape[0])
             c = np.random.randint(0, x.shape[1])
             fig, ax = plt.subplots()
@@ -184,27 +190,6 @@ class Exp_VQVAE(ExpBase):
 
         return val_loss_hist
 
-    def configure_optimizers(self):
-        opt = torch.optim.AdamW(
-            [
-                {
-                    "params": self.encoder.parameters(),
-                    "lr": self.config["exp_params"]["LR"],
-                },
-                {
-                    "params": self.decoder.parameters(),
-                    "lr": self.config["exp_params"]["LR"],
-                },
-                {
-                    "params": self.vq_model.parameters(),
-                    "lr": self.config["exp_params"]["LR"],
-                },
-            ],
-            weight_decay=self.config["exp_params"]["weight_decay"],
-        )
-
-        return {"optimizer": opt, "lr_scheduler": CosineAnnealingLR(opt, self.T_max)}
-
     def test_step(self, batch, batch_idx):
         x = batch
         recons_loss, vq_loss, perplexity = self.forward(x)
@@ -229,3 +214,43 @@ class Exp_VQVAE(ExpBase):
 
         detach_the_unnecessary(loss_hist)
         return loss_hist
+
+    def configure_optimizers(self):
+        opt = torch.optim.AdamW(
+            [
+                {
+                    "params": self.encoder.parameters(),
+                    "lr": self.config["exp_params"]["LR"],
+                },
+                {
+                    "params": self.decoder.parameters(),
+                    "lr": self.config["exp_params"]["LR"],
+                },
+                {
+                    "params": self.vq_model.parameters(),
+                    "lr": self.config["exp_params"]["LR"],
+                },
+            ],
+            weight_decay=self.config["exp_params"]["weight_decay"],
+        )
+
+        return {"optimizer": opt, "lr_scheduler": CosineAnnealingLR(opt, self.T_max)}
+
+    def downstream_step(self):
+        self.encoder.eval()
+        self.vq_model.eval()
+
+        Z_tr, y_tr = encode_data(self.probe_train_dl, self.encoder, self.vq_model, self.device)
+        Z_te, y_ts = encode_data(self.probe_test_dl, self.encoder, self.vq_model, self.device)
+
+        probe_results = probes(Z_tr, Z_te, y_tr, y_ts)
+
+        wandb.log(probe_results)
+
+    def on_train_epoch_end(self):
+        if self.current_epoch % self.probe_test_per == 0:
+            self.downstream_step()
+    
+    def on_train_epoch_start(self):
+        if self.current_epoch == 0:
+            self.downstream_step()

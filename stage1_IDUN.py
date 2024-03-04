@@ -1,27 +1,16 @@
-import copy
-from argparse import ArgumentParser
 
-import wandb
-import pytorch_lightning as pl
-from pytorch_lightning.callbacks import LearningRateMonitor
-from pytorch_lightning.loggers import WandbLogger
-from torch.utils.data import DataLoader
-
-from experiments.exp_ssl_vqvae import Exp_NC_VQVAE
-from experiments.exp_vqvae import Exp_VQVAE
 
 from preprocessing.preprocess_ucr import UCRDatasetImporter
 from preprocessing.data_pipeline import build_data_pipeline
 from utils import (
     load_yaml_param_settings,
-    save_model,
     get_root_dir,
     model_filename,
 )
 import torch
 
-from train_vqvae import train_vqvae
-from train_ssl_vqvae import train_ssl_vqvae
+from trainers.train_vqvae import train_vqvae
+from trainers.train_ssl_vqvae import train_ssl_vqvae
 
 UCR_SUBSET = [
     "ElectricDevices",

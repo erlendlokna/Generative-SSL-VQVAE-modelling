@@ -45,6 +45,8 @@ VQVAE:
   recon_alternate_view_scale: 0.1
   recon_original_view_scale: 0.9 #prioritize original view
 
+  probe_test_per: 100
+
 MaskGIT:
   choice_temperature: 4 # for masking
   stochastic_sampling: 1 # from (Lee et al., 2022)
