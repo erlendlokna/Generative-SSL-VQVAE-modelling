@@ -6,11 +6,11 @@ from utils import (
     model_filename,
 )
 
-from train_vqvae import train_vqvae
-from train_ssl_vqvae import train_ssl_vqvae
-from train_maskgit import train_maskgit
-from train_ssl_maskgit import train_ssl_maskgit
-from train_mage import train_mage
+from trainers.train_vqvae import train_vqvae
+from trainers.train_ssl_vqvae import train_ssl_vqvae
+from trainers.train_maskgit import train_maskgit
+from trainers.train_ssl_maskgit import train_ssl_maskgit
+from trainers.train_mage import train_mage
 
 UCR_SUBSET = [
     "ElectricDevices",
