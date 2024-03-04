@@ -25,6 +25,9 @@ UCR_SUBSET = [
     # "ShapesAll",
 ]
 
+FINISHED_STAGE1 = {"ElectricDevices": [""]}
+FINISHED_STAGE2 = {"ElectricDevices": []}
+
 STAGE1_EPOCHS = 1
 STAGE2_EPOCHS = 1
 
@@ -63,7 +66,7 @@ def run_experiments():
         )
         # STAGE 1
         for method in STAGE1_METHODS:
-            if method == "":
+            if method == "" and method not in FINISHED_STAGE1[dataset]:
                 # No SSL
                 train_vqvae(
                     config=c,
@@ -74,7 +77,8 @@ def run_experiments():
                     wandb_run_name=f"{model_filename(c, 'vqvae')}-{dataset}",
                     wandb_project_name=project_name_stage1,
                 )
-            else:
+
+            elif method not in FINISHED_STAGE1[dataset]:
                 c["SSL"]["stage1_method"] = method
                 c["SSL"]["stage1_weight"] = SSL_WEIGHTS[method]
                 # With SSL
@@ -96,7 +100,7 @@ def run_experiments():
                 c["SSL"]["stage2_method"] = method_2
                 c["SSL"]["stage2_weight"] = SSL_WEIGHTS[method_2]
 
-                if method_2 == "":
+                if method_2 == "" and method_1 not in FINISHED_STAGE2[dataset]:
                     train_maskgit(
                         config=c,
                         train_data_loader=train_data_loader_no_aug,
@@ -106,7 +110,7 @@ def run_experiments():
                         wandb_run_name=f"{model_filename(c, 'maskgit')}-{dataset}",
                         wandb_project_name=project_name_stage2,
                     )
-                else:
+                elif method_2 not in FINISHED_STAGE2[dataset]:
                     train_ssl_maskgit(
                         config=c,
                         train_data_loader=train_data_loader_no_aug,

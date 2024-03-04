@@ -16,8 +16,6 @@ from utils import (
     model_filename,
 )
 
-import torch
-
 
 def load_args():
     parser = ArgumentParser()
@@ -37,6 +35,9 @@ def load_args():
 
     parser.add_argument("--gpu_device_idx", default=0, type=int)
 
+    parser.add_argument("--epochs_stage1", default=2000, type=int)
+    parser.add_argument("--epochs_stage2", default=10000, type=int)
+
     return parser.parse_args()
 
 
@@ -46,6 +47,8 @@ if __name__ == "__main__":
     config["dataset"]["name"] = args.dataset_name
     config["SSL"]["stage1_method"] = args.ssl_stage1
     config["SSL"]["stage2_method"] = args.ssl_stage2
+    config["trainer_params"]["max_epochs"]["stage1"] = args.epochs_stage1
+    config["trainer_params"]["max_epochs"]["stage2"] = args.epochs_stage2
 
     dataset_importer = UCRDatasetImporter(**config["dataset"])
     batch_size = config["dataset"]["batch_sizes"]["stage1"]
