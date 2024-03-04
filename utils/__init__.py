@@ -78,7 +78,7 @@ def freeze(model):
         param.requires_grad = False
 
 
-def ssl_config_filename(config, model_type):
+def model_filename(config, model_type):
     """
     Generates a filename for the SSL configuration based on the provided settings.
     """
@@ -99,8 +99,8 @@ def ssl_config_filename(config, model_type):
     if stage1_method != "":
         stage1_text = f"{stage1_method}_{stage1_weight}_"
 
-    # Only MAGE model has SSL on stage2
-    if stage2_method != "" and model_type == "MAGE":
+    # Only MAGE and sslmaskgit model has SSL on stage2
+    if stage2_method != "" and (model_type == "MAGE" or model_type == "sslmaskgit"):
         stage2_text = f"_{stage2_method}_{stage2_weight}"
 
     filename_parts = [

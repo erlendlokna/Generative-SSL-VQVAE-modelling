@@ -42,7 +42,7 @@ class ExpMAGE(ExpBase):
             embed_dim,
             config,
             config["SSL"]["stage2_method"],
-            global_max_pooling=False,
+            pooling_type=None,
         )
         self.SSL_weight = config["SSL"]["stage2_weight"]
 
@@ -72,7 +72,9 @@ class ExpMAGE(ExpBase):
         )
 
         summary1, summary2 = summaries  # unpack
-        ssl_loss = self.SSL_method(summary1, summary2)
+        summary1_proj = self.SSL_method(summary1)
+        summary2_proj = self.SSL_method(summary2)
+        ssl_loss = self.SSL_method.loss_function(summary1_proj, summary2_proj)
 
         # maskgit sampling
         r = np.random.rand()
@@ -142,9 +144,6 @@ class ExpMAGE(ExpBase):
             "val_prior_loss1": val_prior_loss1,
             "val_prior_loss2": val_prior_loss2,
         }
-
-        # if self.current_epoch % 10 == 0:
-        #    self.downstream_step()
 
         detach_the_unnecessary(loss_hist)
         return loss_hist

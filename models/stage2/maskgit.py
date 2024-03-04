@@ -24,7 +24,7 @@ from utils import (
     timefreq_to_time,
     time_to_timefreq,
     quantize,
-    ssl_config_filename,
+    model_filename,
 )
 
 
@@ -79,19 +79,19 @@ class MaskGIT(nn.Module):
         self.load(
             self.encoder,
             get_root_dir().joinpath("saved_models"),
-            f"{ssl_config_filename(config, 'encoder')}-{dataset_name}.ckpt",
+            f"{model_filename(config, 'encoder')}-{dataset_name}.ckpt",
         )
         print(f"{ssl_method} encoder loaded")
         self.load(
             self.decoder,
             get_root_dir().joinpath("saved_models"),
-            f"{ssl_config_filename(config, 'decoder')}-{dataset_name}.ckpt",
+            f"{model_filename(config, 'decoder')}-{dataset_name}.ckpt",
         )
         print(f"{ssl_method} decoder loaded")
         self.load(
             self.vq_model,
             get_root_dir().joinpath("saved_models"),
-            f"{ssl_config_filename(config, 'vqmodel')}-{dataset_name}.ckpt",
+            f"{model_filename(config, 'vqmodel')}-{dataset_name}.ckpt",
         )
         print(f"{ssl_method} vqmodel loaded")
 

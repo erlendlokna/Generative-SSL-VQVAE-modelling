@@ -25,7 +25,7 @@ from utils import (
     timefreq_to_time,
     time_to_timefreq,
     quantize,
-    ssl_config_filename,
+    model_filename,
 )
 
 
@@ -77,19 +77,19 @@ class MAGE(nn.Module):
         self.load(
             self.encoder,
             get_root_dir().joinpath("saved_models"),
-            f"{ssl_config_filename(config, 'encoder')}-{dataset_name}.ckpt",
+            f"{model_filename(config, 'encoder')}-{dataset_name}.ckpt",
         )
         print(f"{stage1_ssl_method} encoder loaded")
         self.load(
             self.decoder,
             get_root_dir().joinpath("saved_models"),
-            f"{ssl_config_filename(config, 'decoder')}-{dataset_name}.ckpt",
+            f"{model_filename(config, 'decoder')}-{dataset_name}.ckpt",
         )
         print(f"{stage1_ssl_method} decoder loaded")
         self.load(
             self.vq_model,
             get_root_dir().joinpath("saved_models"),
-            f"{ssl_config_filename(config, 'vqmodel')}-{dataset_name}.ckpt",
+            f"{model_filename(config, 'vqmodel')}-{dataset_name}.ckpt",
         )
         print(f"{stage1_ssl_method} vqmodel loaded")
 
@@ -109,6 +109,18 @@ class MAGE(nn.Module):
         # latent space dim
         self.H_prime = self.encoder.H_prime.item()
         self.W_prime = self.encoder.W_prime.item()
+
+        # Masking generator
+        mask_ratio_mu = config["MAGE"]["mask_ratio"]["mu"]
+        mask_ratio_std = config["MAGE"]["mask_ratio"]["std"]
+        self.mask_ratio_min = config["MAGE"]["mask_ratio"]["min"]
+        mask_ratio_max = config["MAGE"]["mask_ratio"]["max"]
+        self.mask_ratio_generator = truncnorm(
+            (self.mask_ratio_min - mask_ratio_mu) / mask_ratio_std,
+            (mask_ratio_max - mask_ratio_mu) / mask_ratio_std,
+            loc=mask_ratio_mu,
+            scale=mask_ratio_std,
+        )
 
         # pretrained discrete tokens
         embed = nn.Parameter(copy.deepcopy(self.vq_model._codebook.embed))
@@ -185,34 +197,12 @@ class MAGE(nn.Module):
         else:
             return logits, target
 
-    """
-    def generate_masked_tokens(self, s, device):
-        s_M = s.clone()
-
-        t = np.random.uniform(0, 1)
-
-        n_masks = math.floor(self.gamma(t) * s_M.shape[1])
-
-        rand = torch.rand(s_M.shape, device=device)  # (b n)
-
-        token_all_mask = torch.zeros(s_M.shape, dtype=torch.bool, device=device)
-
-        token_all_mask.scatter_(
-            dim=1, index=rand.topk(n_masks, dim=1).indices, value=True
-        )
-
-        s_M[token_all_mask.nonzero(as_tuple=True)] = self.mask_token_ids  # (b n)
-
-        return s_M, token_all_mask
-    """
-
-    def generate_mage_mask_drop(self, s, device, drop_rate=0.5):
+    def generate_mage_mask_drop(self, s, device):
         # Method used in MAGE paper.
         s_M = s.clone()
         # sample a masking ratio from a truncated Gaussian distribution
-        mask_rate = truncnorm(
-            a=(0.5 - 0.55) / 0.1, b=(1 - 0.55) / 0.1, loc=0.55, scale=0.1
-        ).rvs()
+        mask_rate = self.mask_ratio_generator.rvs(1)[0]
+        drop_rate = self.mask_ratio_min
 
         # calculate the number of tokens to mask and to drop
         bsz, seq_len = s_M.size()

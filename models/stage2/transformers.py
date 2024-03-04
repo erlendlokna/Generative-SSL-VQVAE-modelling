@@ -154,7 +154,164 @@ class BidirectionalTransformer(nn.Module):
         logits = logits[
             :, :, :-1
         ]  # remove the logit for the mask token.  # (b, n, codebook_size)
+
         return logits
+
+
+class PoolBidirectionalTransformer(nn.Module):
+    def __init__(
+        self,
+        num_tokens: int,
+        codebook_size: int,
+        embed_dim: int,
+        hidden_dim: int,
+        n_layers: int,
+        heads: int,
+        ff_mult: int,
+        use_rmsnorm: bool,
+        p_unconditional: float,
+        n_classes: int,
+        pretrained_tok_emb: nn.Parameter = None,
+        freeze_pretrained_tokens: bool = False,
+        **kwargs
+    ):
+        """
+        :param num_tokens:
+        :param codebook_sizes:
+        :param embed_dim:
+        :param hidden_dim:
+        :param n_layers:
+        :param heads:
+        :param ff_mult:
+        :param use_rmsnorm:
+        :param p_unconditional:
+        :param n_classes:
+        :param pretrained_tok_emb: if given, the embedding of the transformer is initialized with the pretrained embedding from stage 1
+        :param freeze_pretrained_tokens:
+        :param num_tokens:
+        :param kwargs:
+        """
+        super().__init__()
+
+        self.num_tokens = num_tokens
+        self.n_classes = n_classes
+        self.p_unconditional = p_unconditional
+        in_dim = embed_dim
+        out_dim = embed_dim
+
+        # token embeddings
+        self.tok_emb = nn.Embedding(
+            codebook_size + 1, embed_dim
+        )  # `+1` is for mask-token
+        load_pretrained_tok_emb(
+            pretrained_tok_emb, self.tok_emb, freeze_pretrained_tokens
+        )
+
+        # transformer
+        self.pos_emb = nn.Embedding(self.num_tokens + 1, in_dim)
+
+        self.class_condition_emb = nn.Embedding(
+            n_classes + 1, in_dim
+        )  # `+1` is for no-condition
+
+        self.transformer_blocks = ContinuousTransformerWrapper(
+            dim_in=in_dim,
+            dim_out=in_dim,
+            max_seq_len=self.num_tokens + 1,
+            attn_layers=TFEncoder(
+                dim=hidden_dim,
+                depth=n_layers,
+                heads=heads,
+                use_rmsnorm=use_rmsnorm,
+                ff_mult=ff_mult,
+                use_abs_pos_emb=False,
+            ),
+        )
+        self.Token_Prediction = nn.Sequential(
+            *[
+                nn.Linear(in_features=in_dim, out_features=out_dim),
+                nn.GELU(),
+                nn.LayerNorm(out_dim, eps=1e-12),
+            ]
+        )
+        self.bias = nn.Parameter(torch.zeros(self.num_tokens, codebook_size + 1))
+        self.ln = nn.LayerNorm(in_dim, eps=1e-12)
+        self.drop = nn.Dropout(p=0.0)
+
+    def class_embedding(
+        self, class_condition: Union[None, torch.Tensor], batch_size: int, device
+    ):
+        if isinstance(class_condition, torch.Tensor):
+            # if condition is given (conditional sampling)
+            conditional_ind = (
+                torch.rand(class_condition.shape).to(device) > self.p_unconditional
+            )
+            class_uncondition = repeat(
+                torch.Tensor([self.n_classes]).long().to(device),
+                "i -> b i",
+                b=batch_size,
+            )  # (b 1)
+
+            class_condition = torch.where(
+                conditional_ind, class_condition.long(), class_uncondition
+            )  # (b 1)
+        else:
+            # if condition is not given (unconditional sampling)
+            class_uncondition = repeat(
+                torch.Tensor([self.n_classes]).long().to(device),
+                "i -> b i",
+                b=batch_size,
+            )  # (b 1)
+            class_condition = class_uncondition
+        cls_emb = self.class_condition_emb(class_condition)  # (b 1 dim)
+        return cls_emb
+
+    def forward(
+        self, embed_ind, class_condition: Union[None, torch.Tensor] = None, mask=None
+    ):
+        device = embed_ind.device
+
+        token_embeddings = self.tok_emb(embed_ind)  # (b n dim)
+        bsz, seq_len, emb_dim = token_embeddings.size()
+
+        cls_emb = self.class_embedding(
+            class_condition, embed_ind.shape[0], device
+        )  # (b 1 dim)
+
+        n = token_embeddings.shape[1]
+        position_embeddings = self.pos_emb.weight[:n, :]
+        embed = self.drop(
+            self.ln(token_embeddings + position_embeddings)
+        )  # (b, n, dim)
+
+        embed = torch.cat((cls_emb, embed), dim=1)  # (b, 1+n, dim)
+        embed = self.transformer_blocks(embed)  # (b, 1+n, dim)
+
+        mask_latent = None
+        unmasked_latent = None
+        latent = None
+        if mask != None:
+            latent = embed[:, 1:, :]
+            mask_latent = latent[mask.float().nonzero(as_tuple=True)].view(
+                bsz, -1, emb_dim
+            )
+            unmasked_latent = latent[(1 - mask.float()).nonzero(as_tuple=True)].view(
+                bsz, -1, emb_dim
+            )
+
+        embed = self.Token_Prediction(embed)[:, 1:, :]  # (b, n, dim)
+
+        logits = (
+            torch.matmul(embed, self.tok_emb.weight.T) + self.bias
+        )  # (b, n, codebook_size+1)
+        logits = logits[
+            :, :, :-1
+        ]  # remove the logit for the mask token.  # (b, n, codebook_size)
+
+        if mask != None:
+            return logits, [latent, mask_latent, unmasked_latent]
+        else:
+            return logits
 
 
 class AutoEncoderTransformer(nn.Module):
@@ -191,6 +348,7 @@ class AutoEncoderTransformer(nn.Module):
         self.tok_emb = nn.Embedding(
             codebook_size + 1, embed_dim
         )  # `+1` is for mask-token
+
         load_pretrained_tok_emb(
             pretrained_tok_emb, self.tok_emb, freeze_pretrained_tokens
         )
@@ -205,7 +363,7 @@ class AutoEncoderTransformer(nn.Module):
         # Summary Embedding (learnable parameter). Randomly initialized
         # self.summary = nn.Parameter(torch.randn(1, 1, embed_dim))
         self.summary_emb = nn.Parameter(torch.zeros(1, 1, embed_dim))
-        torch.nn.init.normal_(self.summary_emb, std=0.1)
+        torch.nn.init.normal_(self.summary_emb, std=0.02)
 
         # Encoder Transformer
         self.encoder_blocks = ContinuousTransformerWrapper(
@@ -237,6 +395,8 @@ class AutoEncoderTransformer(nn.Module):
             ),
         )
 
+        self.decoder_embed = nn.Linear(embed_dim, embed_dim, bias=True)
+
         # Final Projection to logits
         self.Token_Prediction = nn.Sequential(
             *[
@@ -256,10 +416,6 @@ class AutoEncoderTransformer(nn.Module):
         batch_size: int,
         device,
     ):
-        self.class_condition_emb = self.class_condition_emb.to(device)
-        if class_condition is not None:
-            class_condition = class_condition.to(device)
-
         # returns a class embedding based on the class condition. If no condition is given, it returns an unconditional class embedding.
         # It also will sometimes turn off the class embedding (unconditional sampling) with p_unconditional.
         if isinstance(class_condition, torch.Tensor):
@@ -302,7 +458,7 @@ class AutoEncoderTransformer(nn.Module):
     ):
         # Creates a encoded representation and a summary.
         n = masked_tokens_emb.size(1)
-        position_emb = self.pos_emb.weight[:n, :]
+        position_emb = self.pos_emb_encoder.weight[:n, :]
         summary_emb = self.summary_emb.repeat(masked_tokens_emb.size(0), 1, 1)
 
         encoder_emb = self.drop(self.ln(masked_tokens_emb + position_emb))
@@ -321,7 +477,7 @@ class AutoEncoderTransformer(nn.Module):
     ):
         # Takes in padded latent. I.e representation from encoder.
         n = padded_latent_emb.size(1)
-        position_emb = self.pos_emb.weight[:n, :]
+        position_emb = self.pos_emb_decoder.weight[:n, :]
 
         decoder_emb = self.drop(self.ln(padded_latent_emb + position_emb))
         decoder_emb = torch.cat((class_emb, decoder_emb), dim=1)
@@ -347,11 +503,10 @@ class AutoEncoderTransformer(nn.Module):
         cls_emb = self.class_embedding(class_condition, bsz, device)
 
         # Logic for encoder tokens
-        if token_drop_mask is not None:
-            token_keep_mask = 1 - token_drop_mask.float()
-        else:
-            token_drop_mask = torch.zeros(bsz, seq_len).float().to(device)
-            token_keep_mask = 1 - token_all_mask.float()
+        if token_drop_mask is None:
+            token_drop_mask = token_all_mask.float()
+
+        token_keep_mask = 1 - token_drop_mask
 
         # Grabbing unmasked tokens for encoder.
         encoder_tokens = token_emb[token_keep_mask.nonzero(as_tuple=True)].view(

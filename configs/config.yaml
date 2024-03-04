@@ -16,8 +16,8 @@ trainer_params:
   gpus:
     - 0
   max_epochs:
-    stage1: 100 #2000
-    stage2: 10000 #1000 #1000 #10000
+    stage1: 10 #2000
+    stage2: 100 #1000 #1000 #10000
 
 encoder:
   dim: 64
@@ -39,6 +39,11 @@ VQVAE:
   commitment_weight: 1
   emb_dropout: 0.
   perceptual_loss_weight: 0
+
+  # Hyperparameters when VQVAE are processing
+  # a original and augmented view of the same data.
+  recon_alternate_view_scale: 0.1
+  recon_original_view_scale: 0.9 #prioritize original view
 
 MaskGIT:
   choice_temperature: 4 # for masking
@@ -65,17 +70,23 @@ MAGE:
     use_rmsnorm: True
     p_unconditional: 0.2
 
+  mask_ratio:
+    min: 0.5
+    max: 1.0
+    mu: 0.55
+    std: 0.25
+
 class_guidance:
   guidance_scale: 1.
 
 SSL:
-  stage1_method: "vicreg" # "barlowtwins" or "vicreg" or empty
+  stage1_method: "" #"vibcreg" # "barlowtwins", "vicreg", "vibcreg" or empty
   stage1_weight: 0.01
-  stage2_method: "barlowtwins" # "barlowtwins" or "vicreg" or empty
+  stage2_method: "vibcreg" #"barlowtwins" # "barlowtwins", "vicreg", "vibcreg" or empty
   stage2_weight: 1.0
 
-  p_aug_view: 0.1 # chose augmented views reconstruction stage 1
-
+  # Hyperparameters for SSL methods.
+  # These are the default values from the paper on CV-methods on Time series. Ref: Lee et al.
   barlowtwins:
     proj_hid: 4096 #projector hidden layer size
     proj_out: 4096 #projector output layer size
@@ -87,6 +98,13 @@ SSL:
     lambda: 25 # sim_loss
     mu: 25 # var_loss
     nu: 1 # cov_loss
+
+  vibcreg:
+    proj_hid: 4096 #projector hidden layer size
+    proj_out: 4096 #projector output layer size
+    lambda: 25 # sim_loss
+    mu: 25 # var_loss
+    nu: 100 # cov_loss
 
 augmentations:
   use_all_methods: True
