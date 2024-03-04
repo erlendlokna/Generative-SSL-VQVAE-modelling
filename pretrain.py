@@ -1,0 +1,106 @@
+from preprocessing.data_pipeline import build_data_pipeline
+from pytorch_lightning.callbacks import LearningRateMonitor
+from pytorch_lightning.loggers import WandbLogger
+from preprocessing.preprocess_ucr import UCRDatasetImporter
+from argparse import ArgumentParser
+
+from trainers.train_vqvae import train_vqvae
+from trainers.train_ssl_vqvae import train_ssl_vqvae
+from trainers.train_mage import train_mage
+from trainers.train_ssl_maskgit import train_ssl_maskgit
+from trainers.train_maskgit import train_maskgit
+
+from utils import (
+    load_yaml_param_settings,
+    get_root_dir,
+    model_filename,
+)
+
+import torch
+
+
+def load_args():
+    parser = ArgumentParser()
+    parser.add_argument(
+        "--config",
+        type=str,
+        help="Path to the config data  file.",
+        default=get_root_dir().joinpath("configs", "config.yaml"),
+    )
+
+    parser.add_argument("--dataset_name", type=str, default="ElectricDevices")
+
+    parser.add_argument("--ssl_stage1", default="", type=str)
+    parser.add_argument("--ssl_stage2", default="", type=str)
+
+    parser.add_argument("--model", type=str, default="vqvae")
+
+    parser.add_argument("--gpu_device_idx", default=0, type=int)
+
+    return parser.parse_args()
+
+
+if __name__ == "__main__":
+    args = load_args()
+    config = load_yaml_param_settings(args.config)
+    config["dataset"]["name"] = args.dataset_name
+    config["SSL"]["stage1_method"] = args.ssl_stage1
+    config["SSL"]["stage2_method"] = args.ssl_stage2
+
+    dataset_importer = UCRDatasetImporter(**config["dataset"])
+    batch_size = config["dataset"]["batch_sizes"]["stage1"]
+
+    train_data_loader = build_data_pipeline(
+        batch_size, dataset_importer, config, augment=False, kind="train"
+    )
+
+    train_data_loader_aug = build_data_pipeline(
+        batch_size, dataset_importer, config, augment=True, kind="train"
+    )
+
+    test_data_loader = build_data_pipeline(
+        batch_size, dataset_importer, config, augment=False, kind="test"
+    )
+
+    if args.model == "vqvae":
+        train_vqvae(
+            config,
+            train_data_loader,
+            test_data_loader,
+            do_validate=True,
+            gpu_device_idx=args.gpu_device_idx,
+        )
+    elif args.model == "sslvqvae":
+        train_ssl_vqvae(
+            config,
+            train_data_loader_aug,
+            test_data_loader,
+            do_validate=True,
+            gpu_device_idx=args.gpu_device_idx,
+        )
+    elif args.model == "mage":
+        train_mage(
+            config,
+            train_data_loader,
+            test_data_loader,
+            do_validate=True,
+            gpu_device_idx=args.gpu_device_idx,
+        )
+    elif args.model == "sslmaskgit":
+        train_ssl_maskgit(
+            config,
+            train_data_loader,
+            test_data_loader,
+            do_validate=True,
+            gpu_device_idx=args.gpu_device_idx,
+        )
+    elif args.model == "maskgit":
+        train_maskgit(
+            config,
+            train_data_loader,
+            test_data_loader,
+            do_validate=True,
+            gpu_device_idx=args.gpu_device_idx,
+        )
+    else:
+        raise ValueError(f"Unknown model name: {args.model_name}")

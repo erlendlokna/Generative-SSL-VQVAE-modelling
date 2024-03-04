@@ -84,7 +84,7 @@ class_guidance:
 SSL:
   stage1_method: "" #"vibcreg" # "barlowtwins", "vicreg", "vibcreg" or empty
   stage1_weight: 0.01
-  stage2_method: "vibcreg" #"barlowtwins" # "barlowtwins", "vicreg", "vibcreg" or empty
+  stage2_method: "" #"barlowtwins" # "barlowtwins", "vicreg", "vibcreg" or empty
   stage2_weight: 1.0
 
   # Hyperparameters for SSL methods.
