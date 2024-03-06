@@ -8,6 +8,7 @@ from sklearn.manifold import TSNE
 import matplotlib.pyplot as plt
 from sklearn.svm import SVC
 
+
 def probes(x_tr, x_ts, y_tr, y_ts):
     scaler = MinMaxScaler(feature_range=(-1, 1)).fit(x_tr)
     x_tr = scaler.transform(x_tr)
@@ -23,11 +24,13 @@ def probes(x_tr, x_ts, y_tr, y_ts):
     svm.fit(x_tr, y_tr)
     preds_svm = svm.predict(x_ts)
 
-    scores = {"knn_accuracy": metrics.accuracy_score(y_ts, preds_knn),
-               "svm_accuracy": metrics.accuracy_score(y_ts, preds_svm)}
+    scores = {
+        "knn_accuracy": metrics.accuracy_score(y_ts, preds_knn),
+        "svm_accuracy": metrics.accuracy_score(y_ts, preds_svm),
+    }
 
-    
     return scores
+
 
 def pca_plots(zqs, y):
     pca = PCA(n_components=2)

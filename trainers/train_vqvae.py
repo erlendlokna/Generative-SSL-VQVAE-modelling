@@ -18,7 +18,6 @@ from utils import (
 )
 import torch
 
-
 torch.set_float32_matmul_precision("medium")
 
 
@@ -56,6 +55,8 @@ def train_vqvae(
         input_length,
         config=config,
         n_train_samples=len(train_data_loader.dataset),
+        probe_train_dl=train_data_loader,
+        probe_test_dl=test_data_loader,
     )
 
     wandb_logger = WandbLogger(
@@ -103,7 +104,7 @@ def train_vqvae(
         {
             "encoder": train_exp.encoder,
             "decoder": train_exp.decoder,
-            "vq_model": train_exp.vq_model,
+            "vqmodel": train_exp.vq_model,
         },
         id=config["dataset"]["dataset_name"],
     )

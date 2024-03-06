@@ -1,5 +1,3 @@
-
-
 from preprocessing.preprocess_ucr import UCRDatasetImporter
 from preprocessing.data_pipeline import build_data_pipeline
 from utils import (
@@ -14,10 +12,10 @@ from trainers.train_ssl_vqvae import train_ssl_vqvae
 
 UCR_SUBSET = [
     "ElectricDevices",
-    # "StarLightCurves",
-    # "Wafer",
-    # "ECG5000",
-    # "TwoPatterns",
+    "StarLightCurves",
+    "Wafer",
+    "ECG5000",
+    "TwoPatterns",
     # "FordA",
     # "UWaveGestureLibraryAll",
     # "FordB",
@@ -25,7 +23,7 @@ UCR_SUBSET = [
     # "ShapesAll",
 ]
 
-STAGE1_METHODS = ["", "barlowtwins", "vicreg"]
+STAGE1_METHODS = ["", "vicreg"]
 SSL_WEIGHTS = {"barlowtwins": 1.0, "vicreg": 0.01, "": 0}
 
 

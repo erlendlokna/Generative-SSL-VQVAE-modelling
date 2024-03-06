@@ -25,14 +25,15 @@ UCR_SUBSET = [
     # "ShapesAll",
 ]
 
-FINISHED_STAGE1 = {"ElectricDevices": [""]}
-FINISHED_STAGE2 = {"ElectricDevices": []}
+FINISHED_STAGE1 = {}
+FINISHED_STAGE2 = {}
 
 STAGE1_EPOCHS = 1
 STAGE2_EPOCHS = 1
 
 STAGE1_METHODS = ["", "vibcreg"]
-STAGE2_METHODS = ["", "vibcreg"]
+STAGE2_METHODS = [""]  # "vibcreg"]
+
 SSL_WEIGHTS = {"barlowtwins": 1.0, "vicreg": 0.01, "vibcreg": 0.01, "": 0}
 
 
@@ -66,7 +67,7 @@ def run_experiments():
         )
         # STAGE 1
         for method in STAGE1_METHODS:
-            if method == "" and method not in FINISHED_STAGE1[dataset]:
+            if method == "":
                 # No SSL
                 train_vqvae(
                     config=c,
@@ -78,9 +79,10 @@ def run_experiments():
                     wandb_project_name=project_name_stage1,
                 )
 
-            elif method not in FINISHED_STAGE1[dataset]:
+            elif method != "":
                 c["SSL"]["stage1_method"] = method
                 c["SSL"]["stage1_weight"] = SSL_WEIGHTS[method]
+                print(method)
                 # With SSL
                 train_ssl_vqvae(
                     config=c,
@@ -100,16 +102,16 @@ def run_experiments():
                 c["SSL"]["stage2_method"] = method_2
                 c["SSL"]["stage2_weight"] = SSL_WEIGHTS[method_2]
 
-                if method_2 == "" and method_1 not in FINISHED_STAGE2[dataset]:
-                    train_maskgit(
-                        config=c,
-                        train_data_loader=train_data_loader_no_aug,
-                        test_data_loader=test_data_loader,
-                        do_validate=True,
-                        gpu_device_idx=0,
-                        wandb_run_name=f"{model_filename(c, 'maskgit')}-{dataset}",
-                        wandb_project_name=project_name_stage2,
-                    )
+                train_maskgit(
+                    config=c,
+                    train_data_loader=train_data_loader_no_aug,
+                    test_data_loader=test_data_loader,
+                    do_validate=True,
+                    gpu_device_idx=0,
+                    wandb_run_name=f"{model_filename(c, 'maskgit')}-{dataset}",
+                    wandb_project_name=project_name_stage2,
+                )
+                """
                 elif method_2 not in FINISHED_STAGE2[dataset]:
                     train_ssl_maskgit(
                         config=c,
@@ -120,7 +122,7 @@ def run_experiments():
                         wandb_run_name=f"{model_filename(c, 'sslmaskgit')}-{dataset}",
                         wandb_project_name=project_name_stage2,
                     )
-                    """
+
                     train_mage(
                         config=c,
                         train_data_loader=train_data_loader_aug,
@@ -130,7 +132,7 @@ def run_experiments():
                         wandb_run_name=f"{model_filename(c, 'mage')}-{dataset}",
                         wandb_project_name=project_name,
                     )
-                    """
+                """
 
 
 if __name__ == "__main__":

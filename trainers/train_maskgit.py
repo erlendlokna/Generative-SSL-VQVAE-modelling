@@ -1,4 +1,3 @@
-import copy
 from argparse import ArgumentParser
 
 import torch

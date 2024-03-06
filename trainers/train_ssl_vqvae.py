@@ -58,6 +58,8 @@ def train_ssl_vqvae(
         input_length,
         config=config,
         n_train_samples=len(train_data_loader.dataset),
+        probe_train_dl=train_data_loader,
+        probe_test_dl=test_data_loader,
     )
 
     wandb_logger = WandbLogger(

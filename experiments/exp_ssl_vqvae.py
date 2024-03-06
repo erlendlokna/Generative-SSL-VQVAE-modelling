@@ -18,6 +18,7 @@ from experiments.exp_base import (
     detach_the_unnecessary,
 )
 
+from evaluation.downstream_eval import probes
 
 import torch
 import torch.nn.functional as F
@@ -42,7 +43,12 @@ class Exp_SSL_VQVAE(ExpBase):
         input_length,
         config: dict,
         n_train_samples: int,
+        probe_train_dl=None,
+        probe_test_dl=None,
     ):
+        self.probe_train_dl = probe_train_dl
+        self.probe_test_dl = probe_test_dl
+        self.probe_test_per = config["VQVAE"]["probe_test_per"]
         super().__init__()
 
         self.config = config
@@ -314,3 +320,43 @@ class Exp_SSL_VQVAE(ExpBase):
 
         detach_the_unnecessary(loss_hist)
         return loss_hist
+
+    def downstream_step(self):
+
+        n_fft = self.config["VQVAE"]["n_fft"]
+
+        Z_tr, y_tr = encode_data(
+            dataloader=self.probe_train_dl,
+            encoder=self.encoder,
+            n_fft=n_fft,
+            vq_model=self.vq_model,
+            device=self.device,
+            avg_pooling=True,
+        )
+        Z_te, y_ts = encode_data(
+            dataloader=self.probe_test_dl,
+            encoder=self.encoder,
+            n_fft=n_fft,
+            vq_model=self.vq_model,
+            device=self.device,
+            avg_pooling=True,
+        )
+
+        probe_results = probes(
+            Z_tr.view(Z_tr.shape[0], -1).cpu().numpy(),
+            Z_te.view(Z_te.shape[0], -1).cpu().numpy(),
+            y_tr.cpu().numpy(),
+            y_ts.cpu().numpy(),
+        )
+
+        wandb.log(probe_results)
+
+    @torch.no_grad()
+    def on_train_epoch_end(self):
+        if self.current_epoch % self.probe_test_per == 0 and self.current_epoch != 0:
+            self.downstream_step()
+
+    @torch.no_grad()
+    def on_train_epoch_start(self):
+        if self.current_epoch == 0:
+            self.downstream_step()

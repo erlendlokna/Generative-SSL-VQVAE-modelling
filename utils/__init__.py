@@ -143,7 +143,9 @@ def save_model(models_dict: dict, dirname="saved_models", id: str = ""):
             )
 
 
-def encode_data(dataloader, encoder, n_fft, vq_model=None, device="cuda"):
+def encode_data(
+    dataloader, encoder, n_fft, vq_model=None, avg_pooling=False, device="cuda"
+):
     """
     Function to encode the data using the encoder and optionally the quantizer.
     It encodes to continous latent variables by default (vq_model=False).
@@ -156,7 +158,9 @@ def encode_data(dataloader, encoder, n_fft, vq_model=None, device="cuda"):
     # Iterate over the entire dataloader
     for batch in dataloader:
         x, y = batch  # Unpack the batch.
-        x.to(device)
+        if len(x) == 2:
+            x = x[0]  # discard the potential augmented view
+        x = x.to(device)
         # Perform the encoding
         C = x.shape[1]
         xf = time_to_timefreq(x, n_fft, C).to(
@@ -175,4 +179,8 @@ def encode_data(dataloader, encoder, n_fft, vq_model=None, device="cuda"):
     # Convert lists of lists to 2D tensors
     z_encoded = torch.tensor(z_list, device=device)
     ys = torch.tensor(y_list, device=device)
+
+    if avg_pooling:
+        z_encoded = F.adaptive_avg_pool2d(z_encoded, (1, 1)).squeeze(-1).squeeze(-1)
+
     return z_encoded, ys

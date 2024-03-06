@@ -83,9 +83,9 @@ class_guidance:
 
 SSL:
   stage1_method: "" #"vibcreg" # "barlowtwins", "vicreg", "vibcreg" or empty
-  stage1_weight: 0.01
-  stage2_method: "" #"barlowtwins" # "barlowtwins", "vicreg", "vibcreg" or empty
-  stage2_weight: 1.0
+  stage1_weight: 0.1 # VibCReg: 0.1, BarlowTwins: 1, VICReg: 0.1
+  stage2_method: "" #"barlowtwins" "vicreg", "vibcreg"
+  stage2_weight: 0.1
 
   # Hyperparameters for SSL methods.
   # These are the default values from the paper on CV-methods on Time series. Ref: Lee et al.
