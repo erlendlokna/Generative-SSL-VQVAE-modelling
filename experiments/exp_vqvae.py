@@ -22,6 +22,7 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 
 import wandb
 from evaluation.downstream_eval import probes
+from sklearn.manifold import TSNE
 
 
 class Exp_VQVAE(ExpBase):
@@ -235,7 +236,7 @@ class Exp_VQVAE(ExpBase):
 
         return {"optimizer": opt, "lr_scheduler": CosineAnnealingLR(opt, self.T_max)}
 
-    def downstream_step(self):
+    def downstream_step(self, tsne=False):
         print("performing downstream tasks..")
         n_fft = self.config["VQVAE"]["n_fft"]
 
@@ -266,25 +267,21 @@ class Exp_VQVAE(ExpBase):
         )
         wandb.log(probe_results)
 
-        # correlation:
-        corr = np.corrcoef(self.vq_model.codebook.cpu().detach().numpy())
-        corr_viz = corr.copy()
+        corr = torch.corrcoef(self.vq_model.codebook).to(self.device)
 
-        np.fill_diagonal(corr, 0)
-
-        # Calculate the mean absolute correlation of the off-diagonal elements
-        mean_abs_corr_off_diagonal = np.sum(np.abs(corr)) / (
-            corr.shape[0] * (corr.shape[0] - 1)
-        )
+        mean_abs_corr_off_diagonal = torch.sum(
+            torch.abs(corr - torch.eye(corr.shape[0]).to(self.device))
+        ) / (corr.shape[0] * (corr.shape[0] - 1))
 
         wandb.log({"mean_abs_corr_off_diagonal": mean_abs_corr_off_diagonal})
 
+        corr_viz = corr.cpu().numpy()
         # Set the diagonal elements of corr_viz to np.nan for visualization
         np.fill_diagonal(corr_viz, np.nan)
 
         im = plt.imshow(corr_viz)
         plt.title(
-            f"Mean absolute off-diagonal correlation (@{self.current_epoch}): {np.round(mean_abs_corr_off_diagonal, 4)}"
+            f"Mean absolute off-diagonal correlation (@{self.current_epoch}): {np.round(mean_abs_corr_off_diagonal.cpu(), 4)}"
         )
 
         plt.colorbar(im)
@@ -295,16 +292,32 @@ class Exp_VQVAE(ExpBase):
         plt.bar(range(32), train_counts.cpu().numpy())
         plt.xlabel("tokens")
         plt.ylabel("Count")
-        plt.title("frequency of token usage on test set")
+        plt.title(f"frequency of token usage on test set (@{self.current_epoch})")
         wandb.log({"train_token_usage": wandb.Image(plt)})
         plt.close()
 
         plt.bar(range(32), val_counts.cpu().numpy())
         plt.xlabel("tokens")
         plt.ylabel("Count")
-        plt.title("frequency of token usage on val set")
+        plt.title(f"frequency of token usage on val set (@{self.current_epoch})")
         wandb.log({"val_token_usage": wandb.Image(plt)})
         plt.close()
+
+        if tsne:
+            # TSNE
+            tsne = TSNE(n_components=2, random_state=0)
+            Z_tr_tsne = tsne.fit_transform(Z_tr.cpu().numpy())
+            Z_te_tsne = tsne.fit_transform(Z_te.cpu().numpy())
+
+            plt.scatter(Z_tr_tsne[:, 0], Z_tr_tsne[:, 1], c=y_tr.cpu().numpy())
+            plt.title(f"TSNE of train set (@{self.current_epoch})")
+            wandb.log({"train_tsne": wandb.Image(plt)})
+            plt.close()
+
+            plt.scatter(Z_te_tsne[:, 0], Z_te_tsne[:, 1], c=y_ts.cpu().numpy())
+            plt.title(f"TSNE of val set (@{self.current_epoch})")
+            wandb.log({"val_tsne": wandb.Image(plt)})
+            plt.close()
 
     @torch.no_grad()
     def on_train_epoch_end(self):
@@ -318,4 +331,4 @@ class Exp_VQVAE(ExpBase):
     @torch.no_grad()
     def on_train_epoch_start(self):
         if self.current_epoch == 0:
-            self.downstream_step()
+            self.downstream_step(tsne=True)
