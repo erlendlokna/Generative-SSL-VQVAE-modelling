@@ -14,7 +14,7 @@ data/UCRArchive_2018/
 wandb/
 saved_models/
 notes/.obsidian
-.slurm/
+.slurm
 
 # Distribution / packaging
 .Python

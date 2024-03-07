@@ -38,17 +38,20 @@ def load_args():
     parser.add_argument("--epochs_stage1", default=2000, type=int)
     parser.add_argument("--epochs_stage2", default=10000, type=int)
 
+    parser.add_argument("--disable_wandb", default=False, type=bool)
+
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = load_args()
     config = load_yaml_param_settings(args.config)
-    config["dataset"]["name"] = args.dataset_name
-    config["SSL"]["stage1_method"] = args.ssl_stage1
-    config["SSL"]["stage2_method"] = args.ssl_stage2
-    config["trainer_params"]["max_epochs"]["stage1"] = args.epochs_stage1
-    config["trainer_params"]["max_epochs"]["stage2"] = args.epochs_stage2
+    # config["dataset"]["name"] = "FordA"
+    # config["SSL"]["stage1_method"] = args.ssl_stage1
+    # config["SSL"]["stage2_method"] = args.ssl_stage2
+    # config["trainer_params"]["max_epochs"]["stage1"] = 1000  # args.epochs_stage1
+    # config["trainer_params"]["max_epochs"]["stage2"] = args.epochs_stage2
+    disable_wandb = args.disable_wandb
 
     dataset_importer = UCRDatasetImporter(**config["dataset"])
     batch_size = config["dataset"]["batch_sizes"]["stage1"]
@@ -72,6 +75,7 @@ if __name__ == "__main__":
             test_data_loader,
             do_validate=True,
             gpu_device_idx=args.gpu_device_idx,
+            disable_wandb=disable_wandb,
         )
     elif args.model == "sslvqvae":
         train_ssl_vqvae(
@@ -80,6 +84,7 @@ if __name__ == "__main__":
             test_data_loader,
             do_validate=True,
             gpu_device_idx=args.gpu_device_idx,
+            disable_wandb=disable_wandb,
         )
     elif args.model == "mage":
         train_mage(
@@ -106,4 +111,6 @@ if __name__ == "__main__":
             gpu_device_idx=args.gpu_device_idx,
         )
     else:
-        raise ValueError(f"Unknown model name: {args.model_name}")
+        raise ValueError(
+            f"Unknown model name: {args.model_name}. Please choose one of (mage, vqvae, maskgit, sslmaskgit, sslvqvae). Exiting..."
+        )

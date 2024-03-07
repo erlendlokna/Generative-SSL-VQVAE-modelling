@@ -144,7 +144,13 @@ def save_model(models_dict: dict, dirname="saved_models", id: str = ""):
 
 
 def encode_data(
-    dataloader, encoder, n_fft, vq_model=None, avg_pooling=False, device="cuda"
+    dataloader,
+    encoder,
+    n_fft,
+    vq_model=None,
+    avg_pooling=False,
+    num_tokens=32,
+    device="cuda",
 ):
     """
     Function to encode the data using the encoder and optionally the quantizer.
@@ -156,6 +162,8 @@ def encode_data(
     y_list = []  # List to hold all the labels/targets
 
     # Iterate over the entire dataloader
+    counts = torch.zeros(num_tokens, device=device)
+
     for batch in dataloader:
         x, y = batch  # Unpack the batch.
         if len(x) == 2:
@@ -169,7 +177,9 @@ def encode_data(
         z = encoder(xf)  # Encode the input
 
         if vq_model is not None:
-            z, _, _, _ = quantize(z, vq_model)
+            z, s, _, _ = quantize(z, vq_model)
+            counts += torch.bincount(s.flatten(), minlength=32)
+
         # Convert the tensors to lists and append to z_list and y_list
         z_list.extend(z.cpu().detach().tolist())
         y_list.extend(
@@ -183,4 +193,4 @@ def encode_data(
     if avg_pooling:
         z_encoded = F.adaptive_avg_pool2d(z_encoded, (1, 1)).squeeze(-1).squeeze(-1)
 
-    return z_encoded, ys
+    return z_encoded, ys, counts

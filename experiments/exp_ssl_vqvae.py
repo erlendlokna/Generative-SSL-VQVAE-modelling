@@ -24,6 +24,18 @@ import torch
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import CosineAnnealingLR
 import wandb
+from sklearn.manifold import TSNE
+
+
+def decorrelation_loss(codebook, device):
+    codebook_norm = codebook / torch.norm(codebook, dim=1, keepdim=True)
+
+    corr = torch.corrcoef(codebook_norm).to(device)
+    decorr_loss = torch.sum(torch.abs(corr - torch.eye(corr.shape[0]).to(device))) / (
+        corr.shape[0] * (corr.shape[0] - 1)
+    )
+
+    return decorr_loss
 
 
 class Exp_SSL_VQVAE(ExpBase):
@@ -46,10 +58,12 @@ class Exp_SSL_VQVAE(ExpBase):
         probe_train_dl=None,
         probe_test_dl=None,
     ):
+        super().__init__()
+
         self.probe_train_dl = probe_train_dl
         self.probe_test_dl = probe_test_dl
         self.probe_test_per = config["VQVAE"]["probe_test_per"]
-        super().__init__()
+        self.last_epoch = config["trainer_params"]["max_epochs"]["stage1"]
 
         self.config = config
         self.T_max = config["trainer_params"]["max_epochs"]["stage1"] * (
@@ -129,6 +143,7 @@ class Exp_SSL_VQVAE(ExpBase):
         z = self.encoder(u)
         # Vector Quantization on the original view
         z_q, indices, vq_loss, perplexity = quantize(z, self.vq_model)
+
         # Decode original view
         uhat = self.decoder(z_q)
         # Inverse STFT on original view
@@ -171,6 +186,9 @@ class Exp_SSL_VQVAE(ExpBase):
         recons_loss["timefreq"] = (
             orig_scale * timefreq_loss_orig_view + alt_scale * timefreq_loss_alt_view
         )
+
+        decorr_loss = decorrelation_loss(self.vq_model.codebook, device=self.device)
+
         # plot both views and reconstruction
         r = np.random.uniform(0, 1)
 
@@ -202,12 +220,12 @@ class Exp_SSL_VQVAE(ExpBase):
             wandb.log({"Reconstruction": wandb.Image(plt)})
             plt.close()
 
-        return recons_loss, vq_loss, perplexity, SSL_loss
+        return recons_loss, vq_loss, perplexity, SSL_loss, decorr_loss
 
     def training_step(self, batch, batch_idx):
         x = batch
         # forward:
-        recons_loss, vq_loss, perplexity, SSL_loss = self.forward(x)
+        recons_loss, vq_loss, perplexity, SSL_loss, decorr_loss = self.forward(x)
 
         # --- VQVAE Loss ---
         vqvae_loss = (
@@ -220,7 +238,8 @@ class Exp_SSL_VQVAE(ExpBase):
         SSL_loss = SSL_loss * self.SSL_loss_weight
 
         # --- Total Loss ---
-        loss = vqvae_loss + SSL_loss
+        param = 1
+        loss = vqvae_loss + SSL_loss + param * decorr_loss
 
         # lr scheduler
         sch = self.lr_schedulers()
@@ -236,6 +255,7 @@ class Exp_SSL_VQVAE(ExpBase):
             "perplexity": perplexity,
             "perceptual": recons_loss["perceptual"],
             self.SSL_method.name + "_loss": SSL_loss,
+            "decorrelation_loss": decorr_loss,
         }
 
         wandb.log(loss_hist)
@@ -245,7 +265,9 @@ class Exp_SSL_VQVAE(ExpBase):
 
     def validation_step(self, batch, batch_idx):
         x = batch
-        recons_loss, vq_loss, perplexity, _ = self.forward(x, training=False)
+        recons_loss, vq_loss, perplexity, _, decorr_loss = self.forward(
+            x, training=False
+        )
 
         # only VQVAE loss
         loss = (
@@ -321,25 +343,27 @@ class Exp_SSL_VQVAE(ExpBase):
         detach_the_unnecessary(loss_hist)
         return loss_hist
 
-    def downstream_step(self):
-
+    def downstream_step(self, tsne=False):
+        print("performing downstream tasks..")
         n_fft = self.config["VQVAE"]["n_fft"]
 
-        Z_tr, y_tr = encode_data(
+        Z_tr, y_tr, train_counts = encode_data(
             dataloader=self.probe_train_dl,
             encoder=self.encoder,
             n_fft=n_fft,
             vq_model=self.vq_model,
             device=self.device,
             avg_pooling=True,
+            num_tokens=self.config["VQVAE"]["codebook"]["size"],
         )
-        Z_te, y_ts = encode_data(
+        Z_te, y_ts, val_counts = encode_data(
             dataloader=self.probe_test_dl,
             encoder=self.encoder,
             n_fft=n_fft,
             vq_model=self.vq_model,
             device=self.device,
             avg_pooling=True,
+            num_tokens=self.config["VQVAE"]["codebook"]["size"],
         )
 
         probe_results = probes(
@@ -348,15 +372,70 @@ class Exp_SSL_VQVAE(ExpBase):
             y_tr.cpu().numpy(),
             y_ts.cpu().numpy(),
         )
-
         wandb.log(probe_results)
+
+        corr = torch.corrcoef(self.vq_model.codebook).to(self.device)
+
+        mean_abs_corr_off_diagonal = torch.sum(
+            torch.abs(corr - torch.eye(corr.shape[0]).to(self.device))
+        ) / (corr.shape[0] * (corr.shape[0] - 1))
+
+        wandb.log({"mean_abs_corr_off_diagonal": mean_abs_corr_off_diagonal})
+
+        corr_viz = corr.cpu().numpy()
+        # Set the diagonal elements of corr_viz to np.nan for visualization
+        np.fill_diagonal(corr_viz, np.nan)
+
+        im = plt.imshow(corr_viz)
+        plt.title(
+            f"Mean absolute off-diagonal correlation (@{self.current_epoch}): {np.round(mean_abs_corr_off_diagonal.cpu(), 4)}"
+        )
+
+        plt.colorbar(im)
+        wandb.log({"correlation_matrix": wandb.Image(plt)})
+        plt.close()
+
+        # Counts
+        plt.bar(range(32), train_counts.cpu().numpy())
+        plt.xlabel("tokens")
+        plt.ylabel("Count")
+        plt.title(f"frequency of token usage on test set (@{self.current_epoch})")
+        wandb.log({"train_token_usage": wandb.Image(plt)})
+        plt.close()
+
+        plt.bar(range(32), val_counts.cpu().numpy())
+        plt.xlabel("tokens")
+        plt.ylabel("Count")
+        plt.title(f"frequency of token usage on val set (@{self.current_epoch})")
+        wandb.log({"val_token_usage": wandb.Image(plt)})
+        plt.close()
+
+        if tsne:
+            # TSNE
+            tsne = TSNE(n_components=2, random_state=0)
+            Z_tr_tsne = tsne.fit_transform(Z_tr.cpu().numpy())
+            Z_te_tsne = tsne.fit_transform(Z_te.cpu().numpy())
+
+            plt.scatter(Z_tr_tsne[:, 0], Z_tr_tsne[:, 1], c=y_tr.cpu().numpy())
+            plt.title(f"TSNE of train set (@{self.current_epoch})")
+            wandb.log({"train_tsne": wandb.Image(plt)})
+            plt.close()
+
+            plt.scatter(Z_te_tsne[:, 0], Z_te_tsne[:, 1], c=y_ts.cpu().numpy())
+            plt.title(f"TSNE of val set (@{self.current_epoch})")
+            wandb.log({"val_tsne": wandb.Image(plt)})
+            plt.close()
 
     @torch.no_grad()
     def on_train_epoch_end(self):
+        logged = False
         if self.current_epoch % self.probe_test_per == 0 and self.current_epoch != 0:
+            self.downstream_step()
+            logged = True
+        if self.current_epoch == (self.last_epoch - 1) and not logged:
             self.downstream_step()
 
     @torch.no_grad()
     def on_train_epoch_start(self):
         if self.current_epoch == 0:
-            self.downstream_step()
+            self.downstream_step(tsne=True)

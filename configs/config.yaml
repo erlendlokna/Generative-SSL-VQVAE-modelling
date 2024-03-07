@@ -1,5 +1,5 @@
 dataset:
-  dataset_name: "StarLightCurves"
+  dataset_name: "FordA"
   in_channels: 1
   data_scaling: True
   batch_sizes:
@@ -16,7 +16,7 @@ trainer_params:
   gpus:
     - 0
   max_epochs:
-    stage1: 10 #2000
+    stage1: 400 #2000
     stage2: 100 #1000 #1000 #10000
 
 encoder:
@@ -82,7 +82,7 @@ class_guidance:
   guidance_scale: 1.
 
 SSL:
-  stage1_method: "" #"vibcreg" # "barlowtwins", "vicreg", "vibcreg" or empty
+  stage1_method: "vibcreg" #"vibcreg" # "barlowtwins", "vicreg", "vibcreg" or empty
   stage1_weight: 0.1 # VibCReg: 0.1, BarlowTwins: 1, VICReg: 0.1
   stage2_method: "" #"barlowtwins" "vicreg", "vibcreg"
   stage2_weight: 0.1
@@ -116,14 +116,14 @@ augmentations:
     #- "amplitude_resize"
     - "slope"
     #- 'flip'
-    - "noise_window"
+    # - "noise_window"
   timefreq_augs:
     #- "random_masks"
     #- "block"
     #- "band"
     - "phase"
     #- 'rotation'
-    - "gaussian"
+    # - "gaussian"
     #- "shear"
     - "scale"
 

@@ -37,6 +37,7 @@ class Exp_VQVAE(ExpBase):
         self.probe_train_dl = probe_train_dl
         self.probe_test_dl = probe_test_dl
         self.probe_test_per = config["VQVAE"]["probe_test_per"]
+        self.last_epoch = config["trainer_params"]["max_epochs"]["stage1"]
 
         self.config = config
         self.T_max = config["trainer_params"]["max_epochs"]["stage1"] * (
@@ -235,24 +236,26 @@ class Exp_VQVAE(ExpBase):
         return {"optimizer": opt, "lr_scheduler": CosineAnnealingLR(opt, self.T_max)}
 
     def downstream_step(self):
-
+        print("performing downstream tasks..")
         n_fft = self.config["VQVAE"]["n_fft"]
 
-        Z_tr, y_tr = encode_data(
+        Z_tr, y_tr, train_counts = encode_data(
             dataloader=self.probe_train_dl,
             encoder=self.encoder,
             n_fft=n_fft,
             vq_model=self.vq_model,
             device=self.device,
             avg_pooling=True,
+            num_tokens=self.config["VQVAE"]["codebook"]["size"],
         )
-        Z_te, y_ts = encode_data(
+        Z_te, y_ts, val_counts = encode_data(
             dataloader=self.probe_test_dl,
             encoder=self.encoder,
             n_fft=n_fft,
             vq_model=self.vq_model,
             device=self.device,
             avg_pooling=True,
+            num_tokens=self.config["VQVAE"]["codebook"]["size"],
         )
 
         probe_results = probes(
@@ -261,12 +264,55 @@ class Exp_VQVAE(ExpBase):
             y_tr.cpu().numpy(),
             y_ts.cpu().numpy(),
         )
-
         wandb.log(probe_results)
+
+        # correlation:
+        corr = np.corrcoef(self.vq_model.codebook.cpu().detach().numpy())
+        corr_viz = corr.copy()
+
+        np.fill_diagonal(corr, 0)
+
+        # Calculate the mean absolute correlation of the off-diagonal elements
+        mean_abs_corr_off_diagonal = np.sum(np.abs(corr)) / (
+            corr.shape[0] * (corr.shape[0] - 1)
+        )
+
+        wandb.log({"mean_abs_corr_off_diagonal": mean_abs_corr_off_diagonal})
+
+        # Set the diagonal elements of corr_viz to np.nan for visualization
+        np.fill_diagonal(corr_viz, np.nan)
+
+        im = plt.imshow(corr_viz)
+        plt.title(
+            f"Mean absolute off-diagonal correlation (@{self.current_epoch}): {np.round(mean_abs_corr_off_diagonal, 4)}"
+        )
+
+        plt.colorbar(im)
+        wandb.log({"correlation_matrix": wandb.Image(plt)})
+        plt.close()
+
+        # Counts
+        plt.bar(range(32), train_counts.cpu().numpy())
+        plt.xlabel("tokens")
+        plt.ylabel("Count")
+        plt.title("frequency of token usage on test set")
+        wandb.log({"train_token_usage": wandb.Image(plt)})
+        plt.close()
+
+        plt.bar(range(32), val_counts.cpu().numpy())
+        plt.xlabel("tokens")
+        plt.ylabel("Count")
+        plt.title("frequency of token usage on val set")
+        wandb.log({"val_token_usage": wandb.Image(plt)})
+        plt.close()
 
     @torch.no_grad()
     def on_train_epoch_end(self):
+        logged = False
         if self.current_epoch % self.probe_test_per == 0 and self.current_epoch != 0:
+            self.downstream_step()
+            logged = True
+        if self.current_epoch == (self.last_epoch - 1) and not logged:
             self.downstream_step()
 
     @torch.no_grad()

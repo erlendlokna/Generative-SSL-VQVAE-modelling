@@ -291,8 +291,6 @@ class VectorQuantize(nn.Module):
 
         self.eps = eps
         self.commitment_weight = commitment_weight
-        print(self.commitment_weight)
-
         has_codebook_orthogonal_loss = orthogonal_reg_weight > 0
         self.orthogonal_reg_weight = orthogonal_reg_weight
         self.orthogonal_reg_active_codes_only = orthogonal_reg_active_codes_only

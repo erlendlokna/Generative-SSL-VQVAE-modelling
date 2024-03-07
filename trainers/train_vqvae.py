@@ -44,6 +44,7 @@ def train_vqvae(
     gpu_device_idx: int,
     wandb_project_name: str = "SSL_VQVAE-stage1",
     wandb_run_name="",
+    disable_wandb=False,
 ):
     """
     Trainer for VQVAE or SSL-VQVAE model based on the `do_validate` and `SSL` parameters.
@@ -58,11 +59,11 @@ def train_vqvae(
         probe_train_dl=train_data_loader,
         probe_test_dl=test_data_loader,
     )
-
     wandb_logger = WandbLogger(
         project=wandb_project_name,
         name=wandb_run_name,
         config=config,
+        mode="disabled" if disable_wandb else "online",
     )
 
     trainer = pl.Trainer(

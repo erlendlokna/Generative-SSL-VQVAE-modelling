@@ -99,7 +99,6 @@ def train_mage(
     )
 
     # test
-
     print("evaluating...")
     dataset_name = config["dataset"]["dataset_name"]
     input_length = train_data_loader.dataset.X.shape[-1]

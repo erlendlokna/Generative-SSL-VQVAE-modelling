@@ -14,13 +14,13 @@ from trainers.train_mage import train_mage
 
 UCR_SUBSET = [
     "ElectricDevices",
-    # "StarLightCurves",
-    # "Wafer",
-    # "ECG5000",
-    # "TwoPatterns",
-    "FordA",
+    "StarLightCurves",
+    "Wafer",
+    "ECG5000",
+    "TwoPatterns",
+    # "FordA",
     # "UWaveGestureLibraryAll",
-    "FordB",
+    # "FordB",
     # "ChlorineConcentration",
     # "ShapesAll",
 ]
@@ -28,13 +28,13 @@ UCR_SUBSET = [
 FINISHED_STAGE1 = {}
 FINISHED_STAGE2 = {}
 
-STAGE1_EPOCHS = 1
-STAGE2_EPOCHS = 1
+STAGE1_EPOCHS = 1500
+STAGE2_EPOCHS = 3000
 
 STAGE1_METHODS = ["", "vibcreg"]
 STAGE2_METHODS = [""]  # "vibcreg"]
 
-SSL_WEIGHTS = {"barlowtwins": 1.0, "vicreg": 0.01, "vibcreg": 0.01, "": 0}
+SSL_WEIGHTS = {"barlowtwins": 1.0, "vicreg": 0.1, "vibcreg": 0.1, "": 0}
 
 
 def run_experiments():
