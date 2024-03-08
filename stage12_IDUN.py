@@ -28,7 +28,7 @@ UCR_SUBSET = [
 FINISHED_STAGE1 = {}
 FINISHED_STAGE2 = {}
 
-STAGE1_EPOCHS = 1500
+STAGE1_EPOCHS = 1
 STAGE2_EPOCHS = 3000
 
 STAGE1_METHODS = ["", "vibcreg"]
@@ -66,7 +66,7 @@ def run_experiments():
         )
         # STAGE 1
         for method in STAGE1_METHODS:
-            if method == "" and method not in FINISHED_STAGE1[dataset]:
+            if method == "":
                 # No SSL
                 train_vqvae(
                     config=c,
@@ -78,7 +78,7 @@ def run_experiments():
                     wandb_project_name=project_name_stage1,
                 )
 
-            elif method != "" and method not in FINISHED_STAGE1[dataset]:
+            elif method != "":
                 c["SSL"]["stage1_method"] = method
                 c["SSL"]["stage1_weight"] = SSL_WEIGHTS[method]
 
