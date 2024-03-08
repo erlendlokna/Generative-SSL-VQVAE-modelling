@@ -34,7 +34,7 @@ STAGE2_EPOCHS = 3000
 STAGE1_METHODS = ["", "vibcreg"]
 STAGE2_METHODS = [""]  # "vibcreg"]
 
-SSL_WEIGHTS = {"barlowtwins": 1.0, "vicreg": 0.1, "vibcreg": 0.1, "": 0}
+SSL_WEIGHTS = {"barlowtwins": 1.0, "vicreg": 0.01, "vibcreg": 0.01, "": 0}
 
 
 def run_experiments():

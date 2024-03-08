@@ -51,7 +51,6 @@ def train_ssl_vqvae(
     """
     Trainer for VQVAE or SSL-VQVAE model based on the `do_validate` and `SSL` parameters.
     """
-    project_name = "SSL_VQVAE-stage1"
 
     input_length = train_data_loader.dataset.X.shape[-1]
 
@@ -64,7 +63,7 @@ def train_ssl_vqvae(
     )
 
     wandb_logger = WandbLogger(
-        project=project_name,
+        project=wandb_project_name,
         name=wandb_run_name,
         config=config,
         mode="disabled" if disable_wandb else "online",
