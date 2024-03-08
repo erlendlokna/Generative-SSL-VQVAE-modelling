@@ -56,7 +56,6 @@ class Exp_SSL_VQVAE(ExpBase):
         n_train_samples: int,
         probe_train_dl=None,
         probe_test_dl=None,
-        codebook_decorrelation=True,
     ):
         super().__init__()
 
@@ -117,7 +116,7 @@ class Exp_SSL_VQVAE(ExpBase):
         self.recon_alt_view_scale = config["VQVAE"]["recon_alternate_view_scale"]
         self.recon_orig_view_scale = config["VQVAE"]["recon_original_view_scale"]
 
-        self.codebook_decorrelation = codebook_decorrelation
+        self.codebook_decorrelation = config["VQVAE"]["decorrelate_codebook"]
 
     def forward(self, batch, twobranch=True):
         # One branch or two branch forward pass

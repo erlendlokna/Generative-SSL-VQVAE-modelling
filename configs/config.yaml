@@ -44,7 +44,7 @@ VQVAE:
   # a original and augmented view of the same data.
   recon_alternate_view_scale: 0.1
   recon_original_view_scale: 0.9 #prioritize original view
-
+  decorrelate_codebook: True
   probe_test_per: 100
 
 MaskGIT:

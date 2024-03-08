@@ -92,6 +92,18 @@ def run_experiments():
                     wandb_run_name=f"{model_filename(c, 'sslvqvae')}-{dataset}",
                     wandb_project_name=project_name_stage1,
                 )
+
+                c["VQVAE"]["decorrelate_codebook"] = False
+
+                train_ssl_vqvae(
+                    config=c,
+                    train_data_loader=train_data_loader_aug,
+                    test_data_loader=test_data_loader,
+                    do_validate=True,
+                    gpu_device_idx=0,
+                    wandb_run_name=f"{model_filename(c, 'sslvqvae')}-{dataset}",
+                    wandb_project_name=project_name_stage1,
+                )
         # STAGE 2
         for method_1 in STAGE1_METHODS:
             c["SSL"]["stage1_method"] = method_1
