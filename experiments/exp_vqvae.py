@@ -11,6 +11,7 @@ from utils import (
     timefreq_to_time,
     quantize,
     freeze,
+    shape_match,
 )
 
 from experiments.exp_base import ExpBase, detach_the_unnecessary
@@ -104,7 +105,9 @@ class Exp_VQVAE(ExpBase):
         z_q, indices, vq_loss, perplexity = quantize(z, self.vq_model)
 
         uhat = self.decoder(z_q)
-        xhat = timefreq_to_time(uhat, self.n_fft, C)
+        xhat = timefreq_to_time(uhat, self.n_fft, C, original_length=x.shape[-1])
+        # Make sure x and xhat have the same length. Padding may occur in the ISTFT and STFT process
+        x, xhat = shape_match(x, xhat)
 
         recons_loss["time"] = F.mse_loss(x, xhat)
         recons_loss["timefreq"] = F.mse_loss(u, uhat)
@@ -268,17 +271,29 @@ class Exp_VQVAE(ExpBase):
         )
         wandb.log(probe_results)
 
-        corr = torch.corrcoef(self.vq_model.codebook).to(self.device)
+        # Codebook analysis
+        codebook = self.vq_model.codebook
+        corr = torch.corrcoef(codebook).to(self.device)  # correlation matrix
+        cos_sim = F.cosine_similarity(
+            codebook.unsqueeze(0), codebook.unsqueeze(1), dim=2
+        )  # cosine similarity matrix
 
         mean_abs_corr_off_diagonal = torch.sum(
             torch.abs(corr - torch.eye(corr.shape[0]).to(self.device))
         ) / (corr.shape[0] * (corr.shape[0] - 1))
 
+        mean_abs_cos_sim_off_diagonal = torch.sum(
+            torch.abs(cos_sim - torch.eye(cos_sim.shape[0]).to(self.device))
+        ) / (cos_sim.shape[0] * (cos_sim.shape[0] - 1))
+
         wandb.log({"mean_abs_corr_off_diagonal": mean_abs_corr_off_diagonal})
+        wandb.log({"mean_abs_cos_sim_off_diagonal": mean_abs_cos_sim_off_diagonal})
 
         corr_viz = corr.cpu().numpy()
+        cos_sim_viz = cos_sim.cpu().numpy()
         # Set the diagonal elements of corr_viz to np.nan for visualization
         np.fill_diagonal(corr_viz, np.nan)
+        np.fill_diagonal(cos_sim_viz, np.nan)
 
         im = plt.imshow(corr_viz)
         plt.title(
@@ -287,6 +302,14 @@ class Exp_VQVAE(ExpBase):
 
         plt.colorbar(im)
         wandb.log({"correlation_matrix": wandb.Image(plt)})
+        plt.close()
+
+        im = plt.imshow(cos_sim_viz)
+        plt.title(
+            f"Mean absolute off-diagonal cosine similarity (@{self.current_epoch}): {np.round(mean_abs_cos_sim_off_diagonal.cpu(), 4)}"
+        )
+        plt.colorbar(im)
+        wandb.log({"cosine_similarity_matrix": wandb.Image(plt)})
         plt.close()
 
         # Counts

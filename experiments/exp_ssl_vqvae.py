@@ -11,6 +11,7 @@ from utils import (
     time_to_timefreq,
     timefreq_to_time,
     quantize,
+    shape_match,
 )
 
 from experiments.exp_base import (
@@ -28,9 +29,7 @@ from sklearn.manifold import TSNE
 
 
 def decorrelation_loss(codebook, device):
-    codebook_norm = codebook / torch.norm(codebook, dim=1, keepdim=True)
-
-    corr = torch.corrcoef(codebook_norm).to(device)
+    corr = torch.corrcoef(codebook).to(device)
     decorr_loss = torch.sum(torch.abs(corr - torch.eye(corr.shape[0]).to(device))) / (
         corr.shape[0] * (corr.shape[0] - 1)
     )
@@ -57,6 +56,7 @@ class Exp_SSL_VQVAE(ExpBase):
         n_train_samples: int,
         probe_train_dl=None,
         probe_test_dl=None,
+        codebook_decorrelation=True,
     ):
         super().__init__()
 
@@ -117,7 +117,12 @@ class Exp_SSL_VQVAE(ExpBase):
         self.recon_alt_view_scale = config["VQVAE"]["recon_alternate_view_scale"]
         self.recon_orig_view_scale = config["VQVAE"]["recon_original_view_scale"]
 
+        self.codebook_decorrelation = codebook_decorrelation
+
     def forward(self, batch, twobranch=True):
+        # One branch or two branch forward pass
+        # using one branch if validation step.
+
         if twobranch:
             (x, x_alt_view), y = batch  # x and augmented / alternate x
         else:
@@ -130,20 +135,22 @@ class Exp_SSL_VQVAE(ExpBase):
         C = x.shape[1]
 
         # --- Processing original view ---
-        u = time_to_timefreq(x, self.n_fft, C)  # STFT
+        # STFT
+        u = time_to_timefreq(x, self.n_fft, C)
 
         if not self.decoder.is_upsample_size_updated:
             self.decoder.register_upsample_size(torch.IntTensor(np.array(u.shape[2:])))
 
-        # Encode original view
+        # Encode
         z = self.encoder(u)
-        # Vector Quantization on the original view
+        # Vector Quantization and quantization loss
         z_q, indices, vq_loss, perplexity = quantize(z, self.vq_model)
-
         # Decode original view
         uhat = self.decoder(z_q)
-        # Inverse STFT on original view
+        # ISTFT
         xhat = timefreq_to_time(uhat, self.n_fft, C)
+        # Make sure x and xhat have the same length. Padding may occur in the ISTFT and STFT process
+        x, xhat = shape_match(x, xhat)
 
         # losses
         time_loss_orig_view = F.mse_loss(x, xhat)
@@ -162,7 +169,9 @@ class Exp_SSL_VQVAE(ExpBase):
                 )
                 uhat_alt_view = self.decoder(zq_alt_view)  # Decode
                 xhat_alt_view = timefreq_to_time(uhat_alt_view, self.n_fft, C)  # ISTFT
-
+                # Make sure x and xhat have the same length. Padding may occur in the ISTFT and STFT process:
+                x_alt_view, xhat_alt_view = shape_match(x_alt_view, xhat_alt_view)
+                # losses:
                 time_loss_alt_view = F.mse_loss(x_alt_view, xhat_alt_view)
                 timefreq_loss_alt_view = F.mse_loss(u_alt_view, uhat_alt_view)
 
@@ -172,7 +181,6 @@ class Exp_SSL_VQVAE(ExpBase):
             z_alt_view_projected = self.SSL_method(z_alt_view)
             # calculating similarity loss in projected space:
             SSL_loss = self.SSL_method.loss_function(z_projected, z_alt_view_projected)
-
         else:
             SSL_loss = torch.tensor(0.0)  # no SSL loss if validation step
             time_loss_alt_view = torch.tensor(0.0)
@@ -190,8 +198,12 @@ class Exp_SSL_VQVAE(ExpBase):
             orig_scale * timefreq_loss_orig_view + alt_scale * timefreq_loss_alt_view
         )
 
-        # decorr_loss = torch.tensor(0.0)
-        decorr_loss = decorrelation_loss(self.vq_model.codebook, device=self.device)
+        if self.codebook_decorrelation:
+            codebook_decorr_loss = decorrelation_loss(
+                self.vq_model.codebook, device=self.device
+            )
+        else:
+            codebook_decorr_loss = torch.tensor(0.0)
 
         # plot both views and reconstruction
         r = np.random.uniform(0, 1)
@@ -224,12 +236,12 @@ class Exp_SSL_VQVAE(ExpBase):
             wandb.log({"Reconstruction": wandb.Image(plt)})
             plt.close()
 
-        return recons_loss, vq_loss, perplexity, SSL_loss, decorr_loss
+        return recons_loss, vq_loss, perplexity, SSL_loss, codebook_decorr_loss
 
     def training_step(self, batch, batch_idx):
         x = batch
         # forward:
-        recons_loss, vq_loss, perplexity, SSL_loss, decorr_loss = self.forward(
+        recons_loss, vq_loss, perplexity, SSL_loss, codebook_decorr_loss = self.forward(
             x, twobranch=True
         )
 
@@ -245,7 +257,7 @@ class Exp_SSL_VQVAE(ExpBase):
 
         # --- Total Loss ---
         param = 1
-        loss = vqvae_loss + SSL_loss + param * decorr_loss
+        loss = vqvae_loss + SSL_loss + param * codebook_decorr_loss
 
         # lr scheduler
         sch = self.lr_schedulers()
@@ -261,7 +273,7 @@ class Exp_SSL_VQVAE(ExpBase):
             "perplexity": perplexity,
             "perceptual": recons_loss["perceptual"],
             self.SSL_method.name + "_loss": SSL_loss,
-            "decorrelation_loss": decorr_loss,
+            "codebook_decorrelation_loss": codebook_decorr_loss,
         }
 
         wandb.log(loss_hist)
@@ -380,17 +392,29 @@ class Exp_SSL_VQVAE(ExpBase):
         )
         wandb.log(probe_results)
 
-        corr = torch.corrcoef(self.vq_model.codebook).to(self.device)
+        # Codebook analysis
+        codebook = self.vq_model.codebook
+        corr = torch.corrcoef(codebook).to(self.device)  # correlation matrix
+        cos_sim = F.cosine_similarity(
+            codebook.unsqueeze(0), codebook.unsqueeze(1), dim=2
+        )  # cosine similarity matrix
 
         mean_abs_corr_off_diagonal = torch.sum(
             torch.abs(corr - torch.eye(corr.shape[0]).to(self.device))
         ) / (corr.shape[0] * (corr.shape[0] - 1))
 
+        mean_abs_cos_sim_off_diagonal = torch.sum(
+            torch.abs(cos_sim - torch.eye(cos_sim.shape[0]).to(self.device))
+        ) / (cos_sim.shape[0] * (cos_sim.shape[0] - 1))
+
         wandb.log({"mean_abs_corr_off_diagonal": mean_abs_corr_off_diagonal})
+        wandb.log({"mean_abs_cos_sim_off_diagonal": mean_abs_cos_sim_off_diagonal})
 
         corr_viz = corr.cpu().numpy()
+        cos_sim_viz = cos_sim.cpu().numpy()
         # Set the diagonal elements of corr_viz to np.nan for visualization
         np.fill_diagonal(corr_viz, np.nan)
+        np.fill_diagonal(cos_sim_viz, np.nan)
 
         im = plt.imshow(corr_viz)
         plt.title(
@@ -399,6 +423,14 @@ class Exp_SSL_VQVAE(ExpBase):
 
         plt.colorbar(im)
         wandb.log({"correlation_matrix": wandb.Image(plt)})
+        plt.close()
+
+        im = plt.imshow(cos_sim_viz)
+        plt.title(
+            f"Mean absolute off-diagonal cosine similarity (@{self.current_epoch}): {np.round(mean_abs_cos_sim_off_diagonal.cpu(), 4)}"
+        )
+        plt.colorbar(im)
+        wandb.log({"cosine_similarity_matrix": wandb.Image(plt)})
         plt.close()
 
         # Counts

@@ -34,6 +34,17 @@ def load_yaml_param_settings(yaml_fname: str):
     return config
 
 
+def shape_match(x, xhat):
+    if x.shape[-1] > xhat.shape[-1]:
+        x = x[..., : xhat.shape[-1]]
+    elif x.shape[-1] < xhat.shape[-1]:
+        xhat = xhat[..., : x.shape[-1]]
+    else:
+        x, xhat = x, xhat
+
+    return x, xhat
+
+
 def time_to_timefreq(x, n_fft: int, C: int):
     """
     x: (B, C, L)
@@ -46,12 +57,17 @@ def time_to_timefreq(x, n_fft: int, C: int):
     return x  # (B, C, H, W)
 
 
-def timefreq_to_time(x, n_fft: int, C: int):
+def timefreq_to_time(x, n_fft: int, C: int, original_length=None):
     window = torch.hann_window(n_fft).to(x.device)
     x = rearrange(x, "b (c z) n t -> (b c) n t z", c=C).contiguous()
     x = torch.view_as_complex(x)
     x = torch.istft(x, n_fft, normalized=False, return_complex=False, window=window)
+
+    if original_length is not None:
+        x = x[..., :original_length]
+
     x = rearrange(x, "(b c) l -> b c l", c=C)
+
     return x
 
 
