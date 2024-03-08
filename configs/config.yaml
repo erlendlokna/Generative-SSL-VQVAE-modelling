@@ -1,5 +1,5 @@
 dataset:
-  dataset_name: "FordA"
+  dataset_name: "ShapesAll"
   in_channels: 1
   data_scaling: True
   batch_sizes:

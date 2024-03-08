@@ -25,7 +25,7 @@ UCR_SUBSET = [
     # "ShapesAll",
 ]
 
-FINISHED_STAGE1 = {"ElectricDevices": [""]}
+FINISHED_STAGE1 = {}
 FINISHED_STAGE2 = {}
 
 STAGE1_EPOCHS = 1500
@@ -40,7 +40,8 @@ SSL_WEIGHTS = {"barlowtwins": 1.0, "vicreg": 0.1, "vibcreg": 0.1, "": 0}
 def run_experiments():
     config_dir = get_root_dir().joinpath("configs", "config.yaml")
     config = load_yaml_param_settings(config_dir)
-    config["trainer_params"]["max_epochs"]["stage1"] = 1
+    config["trainer_params"]["max_epochs"]["stage1"] = STAGE1_EPOCHS
+    config["trainer_params"]["max_epochs"]["stage2"] = STAGE2_EPOCHS
     batch_size = config["dataset"]["batch_sizes"]["stage1"]
 
     project_name_stage1 = "SSL_VQVAE-STAGE1-IDUN"
@@ -51,8 +52,6 @@ def run_experiments():
         c["SSL"]["stage1_method"] = ""
         c["SSL"]["stage2_method"] = ""
         c["dataset"]["dataset_name"] = dataset
-        c["trainer_params"]["max_epochs"]["stage1"] = STAGE1_EPOCHS
-        c["trainer_params"]["max_epochs"]["stage2"] = STAGE2_EPOCHS
 
         dataset_importer = UCRDatasetImporter(**config["dataset"])
 

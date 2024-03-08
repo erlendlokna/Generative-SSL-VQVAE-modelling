@@ -117,15 +117,11 @@ class Exp_SSL_VQVAE(ExpBase):
         self.recon_alt_view_scale = config["VQVAE"]["recon_alternate_view_scale"]
         self.recon_orig_view_scale = config["VQVAE"]["recon_original_view_scale"]
 
-    def forward(self, batch, training=True):
-        if training:
+    def forward(self, batch, twobranch=True):
+        if twobranch:
             (x, x_alt_view), y = batch  # x and augmented / alternate x
         else:
             x, y = batch
-            x_alt_view, xhat_alt_view = torch.tensor(0.0), torch.tensor(0.0)
-            u_alt_view, uhat_alt_view = torch.tensor(0.0), torch.tensor(0.0)
-            time_loss_alt_view = torch.tensor(0.0)
-            timefreq_loss_alt_view = torch.tensor(0.0)
 
         recons_loss = {"time": 0.0, "timefreq": 0.0, "perceptual": 0.0}
         vq_loss = 0.0
@@ -133,7 +129,7 @@ class Exp_SSL_VQVAE(ExpBase):
 
         C = x.shape[1]
 
-        # STFT on the original view
+        # --- Processing original view ---
         u = time_to_timefreq(x, self.n_fft, C)  # STFT
 
         if not self.decoder.is_upsample_size_updated:
@@ -149,15 +145,26 @@ class Exp_SSL_VQVAE(ExpBase):
         # Inverse STFT on original view
         xhat = timefreq_to_time(uhat, self.n_fft, C)
 
-        if training:
+        # losses
+        time_loss_orig_view = F.mse_loss(x, xhat)
+        timefreq_loss_orig_view = F.mse_loss(u, uhat)
+
+        # --- Processing alternate view and SSL ---
+        if twobranch:
             # Same process for alternate view
             u_alt_view = time_to_timefreq(x_alt_view, self.n_fft, C)  # STFT
             z_alt_view = self.encoder(u_alt_view)  # Encode
-            zq_alt_view, indices_alt_view, vq_loss_alt_view, perplexity_alt_view = (
-                quantize(z_alt_view, self.vq_model)
-            )
-            uhat_alt_view = self.decoder(zq_alt_view)  # Decode
-            xhat_alt_view = timefreq_to_time(uhat_alt_view, self.n_fft, C)  # ISTFT
+
+            with torch.no_grad():
+                # Stop gradient for the alternate view reconstruction
+                zq_alt_view, indices_alt_view, vq_loss_alt_view, perplexity_alt_view = (
+                    quantize(z_alt_view, self.vq_model)
+                )
+                uhat_alt_view = self.decoder(zq_alt_view)  # Decode
+                xhat_alt_view = timefreq_to_time(uhat_alt_view, self.n_fft, C)  # ISTFT
+
+                time_loss_alt_view = F.mse_loss(x_alt_view, xhat_alt_view)
+                timefreq_loss_alt_view = F.mse_loss(u_alt_view, uhat_alt_view)
 
             # --- SSL part ---
             # projecting both views
@@ -165,17 +172,13 @@ class Exp_SSL_VQVAE(ExpBase):
             z_alt_view_projected = self.SSL_method(z_alt_view)
             # calculating similarity loss in projected space:
             SSL_loss = self.SSL_method.loss_function(z_projected, z_alt_view_projected)
+
         else:
             SSL_loss = torch.tensor(0.0)  # no SSL loss if validation step
+            time_loss_alt_view = torch.tensor(0.0)
+            timefreq_loss_alt_view = torch.tensor(0.0)
 
-        # --- VQVAE loss ---
-        # calculating losses for both views:
-        time_loss_orig_view = F.mse_loss(x, xhat)
-        time_loss_alt_view = F.mse_loss(x_alt_view, xhat_alt_view)
-        # =0 if not training
-        timefreq_loss_orig_view = F.mse_loss(u, uhat)
-        timefreq_loss_alt_view = F.mse_loss(u_alt_view, uhat_alt_view)
-        # =0 if not training
+        # --- Losses ---
         # scales:
         alt_scale = self.recon_alt_view_scale
         orig_scale = self.recon_orig_view_scale
@@ -187,12 +190,13 @@ class Exp_SSL_VQVAE(ExpBase):
             orig_scale * timefreq_loss_orig_view + alt_scale * timefreq_loss_alt_view
         )
 
+        # decorr_loss = torch.tensor(0.0)
         decorr_loss = decorrelation_loss(self.vq_model.codebook, device=self.device)
 
         # plot both views and reconstruction
         r = np.random.uniform(0, 1)
 
-        if r < 0.01 and training:
+        if r < 0.01 and twobranch:
             b = np.random.randint(0, x.shape[0])
             c = np.random.randint(0, x.shape[1])
             fig, ax = plt.subplots()
@@ -225,7 +229,9 @@ class Exp_SSL_VQVAE(ExpBase):
     def training_step(self, batch, batch_idx):
         x = batch
         # forward:
-        recons_loss, vq_loss, perplexity, SSL_loss, decorr_loss = self.forward(x)
+        recons_loss, vq_loss, perplexity, SSL_loss, decorr_loss = self.forward(
+            x, twobranch=True
+        )
 
         # --- VQVAE Loss ---
         vqvae_loss = (
@@ -266,7 +272,7 @@ class Exp_SSL_VQVAE(ExpBase):
     def validation_step(self, batch, batch_idx):
         x = batch
         recons_loss, vq_loss, perplexity, _, decorr_loss = self.forward(
-            x, training=False
+            x, twobranch=False
         )
 
         # only VQVAE loss
@@ -320,7 +326,7 @@ class Exp_SSL_VQVAE(ExpBase):
 
     def test_step(self, batch, batch_idx):
         x = batch
-        recons_loss, vq_loss, perplexity, _ = self.forward(x)
+        recons_loss, vq_loss, perplexity, _ = self.forward(x, twobranch=False)
 
         loss = (
             recons_loss["time"]
@@ -433,9 +439,9 @@ class Exp_SSL_VQVAE(ExpBase):
             self.downstream_step()
             logged = True
         if self.current_epoch == (self.last_epoch - 1) and not logged:
-            self.downstream_step()
+            self.downstream_step(tsne=True)
 
     @torch.no_grad()
     def on_train_epoch_start(self):
         if self.current_epoch == 0:
-            self.downstream_step(tsne=True)
+            self.downstream_step()
