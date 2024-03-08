@@ -26,8 +26,8 @@ UCR_SUBSET = [
 STAGE1_EPOCHS = 1500
 STAGE2_EPOCHS = 3000
 
-STAGE1_METHODS = ["", "vicreg"]
-SSL_WEIGHTS = {"barlowtwins": 1.0, "vicreg": 0.01, "": 0}
+STAGE1_METHODS = ["", "vibcreg"]
+SSL_WEIGHTS = {"barlowtwins": 1.0, "vibcreg": 0.01, "vicreg": 0.01, "": 0}
 
 
 def run_experiments():
@@ -36,6 +36,7 @@ def run_experiments():
 
     config["trainer_params"]["max_epochs"]["stage1"] = STAGE1_EPOCHS
     config["trainer_params"]["max_epochs"]["stage2"] = STAGE2_EPOCHS
+
     batch_size = config["dataset"]["batch_sizes"]["stage1"]
 
     project_name = "SSL_VQVAE-STAGE1-IDUN"
