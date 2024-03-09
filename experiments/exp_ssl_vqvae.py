@@ -37,18 +37,8 @@ def decorrelation_loss(codebook, device):
     return decorr_loss
 
 
-def covariance_loss(codebook, device, weight_schecule=None):
-    """
-    Compute a decorrelation loss by encouraging the covariance matrix of the codebook
-    to be diagonal (minimizing off-diagonal elements implies reduced correlation).
+def covariance_loss(codebook, device):
 
-    Args:
-    - codebook (torch.Tensor): The codebook tensor with shape (num_vectors, vector_dim).
-    - device (torch.device): The device on which to perform the computation.
-
-    Returns:
-    - decorr_loss (torch.Tensor): The computed decorrelation loss.
-    """
     codebook_mean = torch.mean(codebook, dim=0, keepdim=True)
     codebook_centered = codebook - codebook_mean
     cov_matrix = torch.matmul(codebook_centered.T, codebook_centered) / (

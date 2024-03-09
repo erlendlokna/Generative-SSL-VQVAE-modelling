@@ -152,7 +152,7 @@ class TimeAugmenter(object):
 
         return jittered_subx_views
 
-    def prev_add_slope(self, *subx_views):
+    def add_slope(self, *subx_views):
         """
         Add a linear slope to the input sequences.
         """
@@ -165,36 +165,6 @@ class TimeAugmenter(object):
             x = np.arange(subseq_len)
             slope_component = slope * x
             sloped_subx = subx + slope_component
-            sloped_subx_views.append(sloped_subx)
-
-        if len(sloped_subx_views) == 1:
-            sloped_subx_views = sloped_subx_views[0]
-        return sloped_subx_views
-
-    def add_slope(self, *subx_views):
-        """
-        Add a linear slope to the input sequences.
-        """
-        sloped_subx_views = []
-
-        for subx in subx_views:
-            # Handle 1D data
-            subseq_len = subx.shape[0]
-
-            # Normalize the data
-            min_val = np.min(subx)
-            max_val = np.max(subx)
-            subx_norm = (subx - min_val) / (max_val - min_val)
-
-            # Add the slope to the normalized data
-            slope = np.random.uniform(-self.slope_rate, self.slope_rate)
-            x = np.arange(subseq_len)
-            slope_component = slope * x
-            sloped_subx_norm = subx_norm + slope_component
-
-            # Denormalize the data
-            sloped_subx = sloped_subx_norm * (max_val - min_val) + min_val
-
             sloped_subx_views.append(sloped_subx)
 
         if len(sloped_subx_views) == 1:
