@@ -1,6 +1,6 @@
 #!/bin/sh
 #SBATCH --account=ie-imf       # E.g. "ie-idi" if you belong to IE
-#SBATCH --job-name=train_stage1s
+#SBATCH --job-name=codebook_analysis
 #SBATCH --time=3-00:00:00         # format: D-HH:MM:SS
 
 #SBATCH --partition=GPUQ          # Asking for a GPU
@@ -25,4 +25,4 @@ module purge
 # Running your python file
 module load Anaconda3/2023.09-0
 conda activate master
-python stage12_IDUN.py
+python codebook_tests_IDUN.py
