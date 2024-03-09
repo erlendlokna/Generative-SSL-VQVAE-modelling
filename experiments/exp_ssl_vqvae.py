@@ -164,7 +164,7 @@ class Exp_SSL_VQVAE(ExpBase):
         self.recon_alt_view_scale = config["VQVAE"]["recon_alternate_view_scale"]
         self.recon_orig_view_scale = config["VQVAE"]["recon_original_view_scale"]
 
-        self.codebook_decorrelation = config["VQVAE"]["decorrelate_codebook"]
+        self.codebook_decorrelation = config["VQVAE"]["decorr_codebook"]
         self.decorrelation_weight_schedule = exponential_weight_schedule
         self.p = config["VQVAE"]["decorr_weight_schedule_p"]
         self.decorr_weight_schedule_min = config["VQVAE"]["decorr_weight_schedule_min"]
