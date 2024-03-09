@@ -23,7 +23,7 @@ UCR_SUBSET = [
     # "ShapesAll",
 ]
 
-NUM_RUNS_PER = 4
+NUM_RUNS_PER = 5
 
 STAGE1_EPOCHS = 500
 
@@ -36,7 +36,6 @@ def run_experiments():
     config = load_yaml_param_settings(config_dir)
 
     config["trainer_params"]["max_epochs"]["stage1"] = STAGE1_EPOCHS
-    config["trainer_params"]["max_epochs"]["stage2"] = STAGE2_EPOCHS
 
     batch_size = config["dataset"]["batch_sizes"]["stage1"]
 
@@ -66,7 +65,7 @@ def run_experiments():
                 gpu_device_idx=0,
                 do_validate=True,
                 wandb_project_name=project_name,
-                wandb_run_name=f"{dataset}_run{run}",
+                wandb_run_name=f"VQVAE-run{run}",
             )
 
         for run in range(NUM_RUNS_PER):
@@ -78,7 +77,7 @@ def run_experiments():
                 gpu_device_idx=0,
                 do_validate=True,
                 wandb_project_name=project_name,
-                wandb_run_name=f"VQVAE_run{run}",
+                wandb_run_name=f"SSLVQVAE_run{run}",
             )
         for run in range(NUM_RUNS_PER):
             c["VQVAE"]["decorr_codebook"] = True
@@ -108,7 +107,7 @@ def run_experiments():
         for run in range(NUM_RUNS_PER):
             c["VQVAE"]["decorr_codebook"] = True
             c["VQVAE"]["decorr_weight_schedule"] = True
-            c["VQVAE"]["decorr_weight_schedule_p"] = 5
+            c["VQVAE"]["decorr_weight_schedule_p"] = 10
             train_ssl_vqvae(
                 c,
                 train_data_loader_aug,
