@@ -23,7 +23,7 @@ UCR_SUBSET = [
     # "ShapesAll",
 ]
 
-NUM_RUNS_PER = 5
+NUM_RUNS_PER = 4
 
 STAGE1_EPOCHS = 500
 
