@@ -16,7 +16,7 @@ trainer_params:
   gpus:
     - 0
   max_epochs:
-    stage1: 400 #2000
+    stage1: 500 #2000
     stage2: 100 #1000 #1000 #10000
 
 encoder:
@@ -40,11 +40,16 @@ VQVAE:
   emb_dropout: 0.
   perceptual_loss_weight: 0
 
-  # Hyperparameters when VQVAE are processing
-  # a original and augmented view of the same data.
+  # Additional hyperparameters for Two branch VQVAE with codebook decorrelation
   recon_alternate_view_scale: 0.1
   recon_original_view_scale: 0.9 #prioritize original view
+
   decorrelate_codebook: True
+  decorr_weight_schedule: True
+  decorr_weight_schedule_p: 2
+  decorr_weight_schedule_min: 0.5
+  decorr_weight_schedule_max: 1.5
+
   probe_test_per: 100
 
 MaskGIT:

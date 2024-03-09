@@ -68,6 +68,8 @@ if __name__ == "__main__":
         batch_size, dataset_importer, config, augment=False, kind="test"
     )
 
+    wandb_project = "codebook analysis"
+
     if args.model == "vqvae":
         train_vqvae(
             config,
@@ -76,6 +78,7 @@ if __name__ == "__main__":
             do_validate=True,
             gpu_device_idx=args.gpu_device_idx,
             disable_wandb=disable_wandb,
+            wandb_project_name=wandb_project,
         )
     elif args.model == "sslvqvae":
         train_ssl_vqvae(
@@ -85,6 +88,7 @@ if __name__ == "__main__":
             do_validate=True,
             gpu_device_idx=args.gpu_device_idx,
             disable_wandb=disable_wandb,
+            wandb_project_name=wandb_project,
         )
     elif args.model == "mage":
         train_mage(

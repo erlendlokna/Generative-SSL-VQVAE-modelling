@@ -37,6 +37,64 @@ def decorrelation_loss(codebook, device):
     return decorr_loss
 
 
+def covariance_loss(codebook, device, weight_schecule=None):
+    """
+    Compute a decorrelation loss by encouraging the covariance matrix of the codebook
+    to be diagonal (minimizing off-diagonal elements implies reduced correlation).
+
+    Args:
+    - codebook (torch.Tensor): The codebook tensor with shape (num_vectors, vector_dim).
+    - device (torch.device): The device on which to perform the computation.
+
+    Returns:
+    - decorr_loss (torch.Tensor): The computed decorrelation loss.
+    """
+    codebook_mean = torch.mean(codebook, dim=0, keepdim=True)
+    codebook_centered = codebook - codebook_mean
+    cov_matrix = torch.matmul(codebook_centered.T, codebook_centered) / (
+        codebook.size(0) - 1
+    )
+
+    # Create an identity matrix of the same size as the covariance matrix
+    identity_matrix = torch.eye(cov_matrix.size(0)).to(device)
+
+    # Calculate loss as the sum of squared off-diagonal elements of the covariance matrix
+    # This is equivalent to minimizing the Frobenius norm of the off-diagonal elements
+    off_diagonal_mask = 1 - identity_matrix
+    off_diagonal_elements = cov_matrix * off_diagonal_mask
+    decorr_loss = torch.norm(off_diagonal_elements, p="fro") ** 2 / (
+        cov_matrix.size(0) * (cov_matrix.size(0) - 1)
+    )
+
+    return decorr_loss
+
+
+def linear_weight_schedule(
+    current_epoch, start_epoch, end_epoch, start_weight, end_weight
+):
+    if current_epoch < start_epoch:
+        return start_weight
+    elif current_epoch > end_epoch:
+        return end_weight
+    else:
+        return start_weight + (end_weight - start_weight) * (
+            (current_epoch - start_epoch) / (end_epoch - start_epoch)
+        )
+
+
+def exponential_weight_schedule(
+    current_epoch, max_epoch, start_weight, end_weight, base=2
+):
+    if current_epoch > max_epoch:
+        return end_weight
+    else:
+        epoch_ratio = current_epoch / max_epoch
+        weight = start_weight + (end_weight - start_weight) * (
+            (base**epoch_ratio) - 1
+        ) / (base - 1)
+        return weight
+
+
 class Exp_SSL_VQVAE(ExpBase):
     """
     VQVAE with a two branch encoder structure. Incorporates an additional Non contrastiv SSL objective for the encoder.
@@ -117,6 +175,10 @@ class Exp_SSL_VQVAE(ExpBase):
         self.recon_orig_view_scale = config["VQVAE"]["recon_original_view_scale"]
 
         self.codebook_decorrelation = config["VQVAE"]["decorrelate_codebook"]
+        self.decorrelation_weight_schedule = exponential_weight_schedule
+        self.p = config["VQVAE"]["decorr_weight_schedule_p"]
+        self.decorr_weight_schedule_min = config["VQVAE"]["decorr_weight_schedule_min"]
+        self.decorr_weight_schedule_max = config["VQVAE"]["decorr_weight_schedule_max"]
 
     def forward(self, batch, twobranch=True):
         # One branch or two branch forward pass
@@ -198,9 +260,10 @@ class Exp_SSL_VQVAE(ExpBase):
         )
 
         if self.codebook_decorrelation:
-            codebook_decorr_loss = decorrelation_loss(
+            codebook_decorr_loss = covariance_loss(
                 self.vq_model.codebook, device=self.device
             )
+
         else:
             codebook_decorr_loss = torch.tensor(0.0)
 
@@ -255,9 +318,16 @@ class Exp_SSL_VQVAE(ExpBase):
         SSL_loss = SSL_loss * self.SSL_loss_weight
 
         # --- Total Loss ---
-        param = 1
-        loss = vqvae_loss + SSL_loss + param * codebook_decorr_loss
+        decorr_weight = self.decorrelation_weight_schedule(
+            self.current_epoch,
+            max_epoch=self.last_epoch,
+            start_weight=0.5,
+            end_weight=1.5,
+            base=2,
+        )
 
+        loss = vqvae_loss + SSL_loss + decorr_weight * codebook_decorr_loss
+        wandb.log({"decorr_weight": decorr_weight})
         # lr scheduler
         sch = self.lr_schedulers()
         sch.step()
