@@ -104,6 +104,7 @@ def train_ssl_vqvae(
 
     # Save the models
     print("saving models...")
+
     save_model(
         {
             model_filename(config, "encoder"): train_exp.encoder,

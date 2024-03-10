@@ -45,7 +45,7 @@ VQVAE:
   recon_original_view_scale: 0.9 #prioritize original view
 
   decorr_codebook: True
-  decorr_weight_schedule: True
+  decorr_weight_schedule: False
   decorr_weight_schedule_p: 2
   decorr_weight_schedule_min: 0.5
   decorr_weight_schedule_max: 1.5

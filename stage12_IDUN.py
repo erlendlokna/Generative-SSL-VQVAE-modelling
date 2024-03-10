@@ -19,8 +19,8 @@ UCR_SUBSET = [
     # "ECG5000",
     # "TwoPatterns",
     "FordA",
-    "UWaveGestureLibraryAll",
-    "FordB",
+    # "UWaveGestureLibraryAll",
+    # "FordB",
     # "ChlorineConcentration",
     # "ShapesAll",
 ]
@@ -30,6 +30,8 @@ FINISHED_STAGE2 = {}
 
 STAGE1_EPOCHS = 1500
 STAGE2_EPOCHS = 3000
+
+NUM_RUNS_PER = 1
 
 STAGE1_METHODS = ["", "vibcreg"]
 STAGE2_METHODS = [""]  # "vibcreg"]
@@ -68,82 +70,82 @@ def run_experiments():
         for method in STAGE1_METHODS:
             if method == "":
                 # No SSL
-                train_vqvae(
-                    config=c,
-                    train_data_loader=train_data_loader_no_aug,
-                    test_data_loader=test_data_loader,
-                    do_validate=True,
-                    gpu_device_idx=0,
-                    wandb_run_name=f"{model_filename(c, 'vqvae')}-{dataset}",
-                    wandb_project_name=project_name_stage1,
-                )
-
-            elif method != "":
-                c["SSL"]["stage1_method"] = method
-                c["SSL"]["stage1_weight"] = SSL_WEIGHTS[method]
-
-                # With SSL
-                train_ssl_vqvae(
-                    config=c,
-                    train_data_loader=train_data_loader_aug,
-                    test_data_loader=test_data_loader,
-                    do_validate=True,
-                    gpu_device_idx=0,
-                    wandb_run_name=f"{model_filename(c, 'sslvqvae')}-{dataset}",
-                    wandb_project_name=project_name_stage1,
-                )
-
-                c["VQVAE"]["decorrelate_codebook"] = False
-
-                train_ssl_vqvae(
-                    config=c,
-                    train_data_loader=train_data_loader_aug,
-                    test_data_loader=test_data_loader,
-                    do_validate=True,
-                    gpu_device_idx=0,
-                    wandb_run_name=f"{model_filename(c, 'sslvqvae')}-{dataset}",
-                    wandb_project_name=project_name_stage1,
-                )
-        # STAGE 2
-        for method_1 in STAGE1_METHODS:
-            c["SSL"]["stage1_method"] = method_1
-            c["SSL"]["stage1_weight"] = SSL_WEIGHTS[method_1]
-
-            for method_2 in STAGE2_METHODS:
-                c["SSL"]["stage2_method"] = method_2
-                c["SSL"]["stage2_weight"] = SSL_WEIGHTS[method_2]
-
-                train_maskgit(
-                    config=c,
-                    train_data_loader=train_data_loader_no_aug,
-                    test_data_loader=test_data_loader,
-                    do_validate=True,
-                    gpu_device_idx=0,
-                    wandb_run_name=f"{model_filename(c, 'maskgit')}-{dataset}",
-                    wandb_project_name=project_name_stage2,
-                )
-                """
-                elif method_2 not in FINISHED_STAGE2[dataset]:
-                    train_ssl_maskgit(
+                for run in range(NUM_RUNS_PER):
+                    train_vqvae(
                         config=c,
                         train_data_loader=train_data_loader_no_aug,
                         test_data_loader=test_data_loader,
                         do_validate=True,
                         gpu_device_idx=0,
-                        wandb_run_name=f"{model_filename(c, 'sslmaskgit')}-{dataset}",
-                        wandb_project_name=project_name_stage2,
+                        wandb_run_name=f"{model_filename(c, 'vqvae')}-{dataset}-run{run+1}",
+                        wandb_project_name=project_name_stage1,
                     )
 
-                    train_mage(
+            elif method != "":
+                c["SSL"]["stage1_method"] = method
+                c["SSL"]["stage1_weight"] = SSL_WEIGHTS[method]
+                c["VQVAE"]["decorrelate_codebook"] = False
+                # With SSL
+                for run in range(NUM_RUNS_PER):
+                    train_ssl_vqvae(
                         config=c,
                         train_data_loader=train_data_loader_aug,
                         test_data_loader=test_data_loader,
                         do_validate=True,
                         gpu_device_idx=0,
-                        wandb_run_name=f"{model_filename(c, 'mage')}-{dataset}",
-                        wandb_project_name=project_name,
+                        wandb_run_name=f"{model_filename(c, 'sslvqvae')}-{dataset}-run{run+1}",
+                        wandb_project_name=project_name_stage1,
                     )
-                """
+
+                c["VQVAE"]["decorrelate_codebook"] = True
+
+                for run in range(NUM_RUNS_PER):
+                    train_ssl_vqvae(
+                        config=c,
+                        train_data_loader=train_data_loader_aug,
+                        test_data_loader=test_data_loader,
+                        do_validate=True,
+                        gpu_device_idx=0,
+                        wandb_run_name=f"{model_filename(c, 'ssl-decorr-vqvae')}-{dataset}-run{run+1}",
+                        wandb_project_name=project_name_stage1,
+                    )
+
+        # STAGE 2
+        for method_1 in STAGE1_METHODS:
+            c["SSL"]["stage1_method"] = method_1
+            c["SSL"]["stage1_weight"] = SSL_WEIGHTS[method_1]
+            c["VQVAE"]["decorrelate_codebook"] = False
+
+            for method_2 in STAGE2_METHODS:
+                c["SSL"]["stage2_method"] = method_2
+                c["SSL"]["stage2_weight"] = SSL_WEIGHTS[method_2]
+                for run in range(NUM_RUNS_PER):
+                    train_maskgit(
+                        config=c,
+                        train_data_loader=train_data_loader_no_aug,
+                        test_data_loader=test_data_loader,
+                        do_validate=True,
+                        gpu_device_idx=0,
+                        wandb_run_name=f"{model_filename(c, 'maskgit')}-{dataset}-run{run+1}",
+                        wandb_project_name=project_name_stage2,
+                    )
+
+            c["VQVAE"]["decorrelate_codebook"] = True
+            c["VQVAE"]["decorr_weight_schedule"] = False
+
+            for method_2 in STAGE2_METHODS:
+                c["SSL"]["stage2_method"] = method_2
+                c["SSL"]["stage2_weight"] = SSL_WEIGHTS[method_2]
+                for run in range(NUM_RUNS_PER):
+                    train_maskgit(
+                        config=c,
+                        train_data_loader=train_data_loader_no_aug,
+                        test_data_loader=test_data_loader,
+                        do_validate=True,
+                        gpu_device_idx=0,
+                        wandb_run_name=f"{model_filename(c, 'maskgit')}-{dataset}-run{run+1}",
+                        wandb_project_name=project_name_stage2,
+                    )
 
 
 if __name__ == "__main__":
