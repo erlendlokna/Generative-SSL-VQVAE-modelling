@@ -84,6 +84,7 @@ def run_experiments():
                         gpu_device_idx=0,
                         wandb_run_name=f"{model_filename(c, 'vqvae')}-{dataset}-run{run+1}",
                         wandb_project_name=project_name_stage1,
+                        torch_seed=0,
                     )
 
             elif method != "":
@@ -100,6 +101,7 @@ def run_experiments():
                         gpu_device_idx=0,
                         wandb_run_name=f"{model_filename(c, 'sslvqvae')}-{dataset}-run{run+1}",
                         wandb_project_name=project_name_stage1,
+                        torch_seed=0,
                     )
 
                 c["VQVAE"]["decorrelate_codebook"] = True
@@ -113,6 +115,7 @@ def run_experiments():
                         gpu_device_idx=0,
                         wandb_run_name=f"{model_filename(c, 'ssl-decorr-vqvae')}-{dataset}-run{run+1}",
                         wandb_project_name=project_name_stage1,
+                        torch_seed=0,
                     )
 
         # STAGE 2
@@ -133,6 +136,7 @@ def run_experiments():
                         gpu_device_idx=0,
                         wandb_run_name=f"{model_filename(c, 'maskgit')}-{dataset}-run{run+1}",
                         wandb_project_name=project_name_stage2,
+                        torch_seed=0,
                     )
 
             c["VQVAE"]["decorrelate_codebook"] = True
@@ -150,6 +154,7 @@ def run_experiments():
                         gpu_device_idx=0,
                         wandb_run_name=f"{model_filename(c, 'maskgit')}-{dataset}-run{run+1}",
                         wandb_project_name=project_name_stage2,
+                        torch_seed=0,
                     )
 
 

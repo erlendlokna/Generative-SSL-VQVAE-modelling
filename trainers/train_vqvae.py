@@ -45,10 +45,12 @@ def train_vqvae(
     wandb_project_name: str = "SSL_VQVAE-stage1",
     wandb_run_name="",
     disable_wandb=False,
+    torch_seed=0,
 ):
     """
     Trainer for VQVAE or SSL-VQVAE model based on the `do_validate` and `SSL` parameters.
     """
+    torch.manual_seed(torch_seed)
 
     input_length = train_data_loader.dataset.X.shape[-1]
 

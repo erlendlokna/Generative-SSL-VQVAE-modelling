@@ -44,10 +44,13 @@ def train_maskgit(
     do_validate: bool,
     wandb_project_name: str = "SSL_VQVAE-stage2",
     wandb_run_name="",
+    torch_seed=0,
 ):
     """
     :param do_validate: if True, validation is conducted during training with a test dataset.
     """
+    torch.manual_seed(torch_seed)
+
     n_classes = len(np.unique(train_data_loader.dataset.Y))
     input_length = train_data_loader.dataset.X.shape[-1]
 
