@@ -39,7 +39,6 @@ def load_args():
 
 
 def train_mage(
-    ssl_stage2: bool,
     config: dict,
     train_data_loader: DataLoader,
     test_data_loader: DataLoader,
@@ -51,7 +50,6 @@ def train_mage(
     """
     :param do_validate: if True, validation is conducted during training with a test dataset.
     """
-    project_name = "SSL_VQVAE-stage2"
 
     n_classes = len(np.unique(train_data_loader.dataset.Y))
     input_length = train_data_loader.dataset.X.shape[-1]
@@ -66,7 +64,9 @@ def train_mage(
         test_data_loader,
     )
 
-    wandb_logger = WandbLogger(project=project_name, name=None, config=config)
+    wandb_logger = WandbLogger(
+        project=wandb_project_name, name=wandb_run_name, config=config
+    )
 
     trainer = pl.Trainer(
         logger=wandb_logger,

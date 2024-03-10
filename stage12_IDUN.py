@@ -12,6 +12,8 @@ from trainers.train_maskgit import train_maskgit
 from trainers.train_ssl_maskgit import train_ssl_maskgit
 from trainers.train_mage import train_mage
 
+import torch
+
 UCR_SUBSET = [
     # "ElectricDevices",
     # "StarLightCurves",
@@ -40,6 +42,9 @@ SSL_WEIGHTS = {"barlowtwins": 1.0, "vicreg": 0.01, "vibcreg": 0.01, "": 0}
 
 
 def run_experiments():
+    # Set random seed
+    torch.manual_seed(0)
+
     config_dir = get_root_dir().joinpath("configs", "config.yaml")
     config = load_yaml_param_settings(config_dir)
     config["trainer_params"]["max_epochs"]["stage1"] = STAGE1_EPOCHS

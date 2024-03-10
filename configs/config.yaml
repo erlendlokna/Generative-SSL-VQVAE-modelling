@@ -44,7 +44,8 @@ VQVAE:
   recon_alternate_view_scale: 0.1
   recon_original_view_scale: 0.9 #prioritize original view
 
-  decorr_codebook: True
+  decorr_codebook: False
+  decorr_weight: 0.1
   decorr_weight_schedule: False
   decorr_weight_schedule_p: 2
   decorr_weight_schedule_min: 0.5
@@ -89,7 +90,7 @@ class_guidance:
 SSL:
   stage1_method: "vibcreg" #"vibcreg" # "barlowtwins", "vicreg", "vibcreg" or empty
   stage1_weight: 0.1 # VibCReg: 0.1, BarlowTwins: 1, VICReg: 0.1
-  stage2_method: "" #"barlowtwins" "vicreg", "vibcreg"
+  stage2_method: "vibcreg" #"barlowtwins" "vicreg", "vibcreg"
   stage2_weight: 0.1
 
   # Hyperparameters for SSL methods.

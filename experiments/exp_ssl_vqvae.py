@@ -168,6 +168,7 @@ class Exp_SSL_VQVAE(ExpBase):
         self.decorrelate_weight_schedule = config["VQVAE"]["decorr_weight_schedule"]
 
         self.decorrelation_weight_schedule = exponential_weight_schedule
+        self.decorr_weight = config["VQVAE"]["decorr_weight"]
         self.p = config["VQVAE"]["decorr_weight_schedule_p"]
         self.decorr_weight_schedule_min = config["VQVAE"]["decorr_weight_schedule_min"]
         self.decorr_weight_schedule_max = config["VQVAE"]["decorr_weight_schedule_max"]
@@ -319,10 +320,10 @@ class Exp_SSL_VQVAE(ExpBase):
                 base=self.p,
             )
         else:
-            decorr_weight = 1.0
+            decorr_weight = self.decorr_weight
 
         loss = vqvae_loss + SSL_loss + decorr_weight * codebook_decorr_loss
-        wandb.log({"decorr_weight": decorr_weight})
+
         # lr scheduler
         sch = self.lr_schedulers()
         sch.step()
@@ -338,6 +339,7 @@ class Exp_SSL_VQVAE(ExpBase):
             "perceptual": recons_loss["perceptual"],
             self.SSL_method.name + "_loss": SSL_loss,
             "codebook_decorrelation_loss": codebook_decorr_loss,
+            "decorr_weight": decorr_weight,
         }
 
         wandb.log(loss_hist)
