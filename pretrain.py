@@ -9,6 +9,7 @@ from trainers.train_ssl_vqvae import train_ssl_vqvae
 from trainers.train_mage import train_mage
 from trainers.train_ssl_maskgit import train_ssl_maskgit
 from trainers.train_maskgit import train_maskgit
+import torch
 
 from utils import (
     load_yaml_param_settings,
@@ -44,6 +45,8 @@ def load_args():
 
 
 if __name__ == "__main__":
+    torch.manual_seed(0)
+
     args = load_args()
     config = load_yaml_param_settings(args.config)
     # config["dataset"]["name"] = "FordA"
@@ -79,6 +82,7 @@ if __name__ == "__main__":
             gpu_device_idx=args.gpu_device_idx,
             disable_wandb=disable_wandb,
             wandb_project_name=wandb_project,
+            torch_seed=0,
         )
     elif args.model == "sslvqvae":
         train_ssl_vqvae(
@@ -89,6 +93,7 @@ if __name__ == "__main__":
             gpu_device_idx=args.gpu_device_idx,
             disable_wandb=disable_wandb,
             wandb_project_name=wandb_project,
+            torch_seed=0,
         )
     elif args.model == "mage":
         train_mage(
@@ -113,6 +118,7 @@ if __name__ == "__main__":
             test_data_loader,
             do_validate=True,
             gpu_device_idx=args.gpu_device_idx,
+            torch_seed=0,
         )
     else:
         raise ValueError(

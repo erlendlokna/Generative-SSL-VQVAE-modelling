@@ -16,8 +16,8 @@ trainer_params:
   gpus:
     - 0
   max_epochs:
-    stage1: 500 #2000
-    stage2: 100 #1000 #1000 #10000
+    stage1: 5 #2000
+    stage2: 2 #1000 #1000 #10000
 
 encoder:
   dim: 64
@@ -44,7 +44,7 @@ VQVAE:
   recon_alternate_view_scale: 0.1
   recon_original_view_scale: 0.9 #prioritize original view
 
-  decorr_codebook: False
+  decorr_codebook: True
   decorr_weight: 0.1
   decorr_weight_schedule: False
   decorr_weight_schedule_p: 2

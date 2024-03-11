@@ -35,7 +35,7 @@ STAGE2_EPOCHS = 3000
 
 NUM_RUNS_PER = 1
 
-STAGE1_METHODS = ["", "vibcreg"]
+STAGE1_METHODS = ["vibcreg"]
 STAGE2_METHODS = [""]  # "vibcreg"]
 
 SSL_WEIGHTS = {"barlowtwins": 1.0, "vicreg": 0.01, "vibcreg": 0.01, "": 0}
@@ -90,21 +90,21 @@ def run_experiments():
             elif method != "":
                 c["SSL"]["stage1_method"] = method
                 c["SSL"]["stage1_weight"] = SSL_WEIGHTS[method]
-                c["VQVAE"]["decorrelate_codebook"] = False
+                c["VQVAE"]["decorr_codebook"] = False
                 # With SSL
-                for run in range(NUM_RUNS_PER):
-                    train_ssl_vqvae(
-                        config=c,
-                        train_data_loader=train_data_loader_aug,
-                        test_data_loader=test_data_loader,
-                        do_validate=True,
-                        gpu_device_idx=0,
-                        wandb_run_name=f"{model_filename(c, 'sslvqvae')}-{dataset}-run{run+1}",
-                        wandb_project_name=project_name_stage1,
-                        torch_seed=0,
-                    )
+                # for run in range(NUM_RUNS_PER):
+                #    train_ssl_vqvae(
+                #        config=c,
+                #        train_data_loader=train_data_loader_aug,
+                #        test_data_loader=test_data_loader,
+                #        do_validate=True,
+                #        gpu_device_idx=0,
+                #        wandb_run_name=f"{model_filename(c, 'sslvqvae')}-{dataset}-run{run+1}",
+                #        wandb_project_name=project_name_stage1,
+                #        torch_seed=0,
+                #    )
 
-                c["VQVAE"]["decorrelate_codebook"] = True
+                c["VQVAE"]["decorr_codebook"] = True
 
                 for run in range(NUM_RUNS_PER):
                     train_ssl_vqvae(
@@ -122,7 +122,7 @@ def run_experiments():
         for method_1 in STAGE1_METHODS:
             c["SSL"]["stage1_method"] = method_1
             c["SSL"]["stage1_weight"] = SSL_WEIGHTS[method_1]
-            c["VQVAE"]["decorrelate_codebook"] = False
+            c["VQVAE"]["decorr_codebook"] = False
 
             for method_2 in STAGE2_METHODS:
                 c["SSL"]["stage2_method"] = method_2
@@ -139,7 +139,7 @@ def run_experiments():
                         torch_seed=0,
                     )
 
-            c["VQVAE"]["decorrelate_codebook"] = True
+            c["VQVAE"]["decorr_codebook"] = True
             c["VQVAE"]["decorr_weight_schedule"] = False
 
             for method_2 in STAGE2_METHODS:
