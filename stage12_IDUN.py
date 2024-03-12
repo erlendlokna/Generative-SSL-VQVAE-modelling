@@ -47,8 +47,10 @@ def run_experiments():
 
     config_dir = get_root_dir().joinpath("configs", "config.yaml")
     config = load_yaml_param_settings(config_dir)
+
     config["trainer_params"]["max_epochs"]["stage1"] = STAGE1_EPOCHS
     config["trainer_params"]["max_epochs"]["stage2"] = STAGE2_EPOCHS
+
     batch_size = config["dataset"]["batch_sizes"]["stage1"]
 
     project_name_stage1 = "SSL_VQVAE-STAGE1-IDUN"
@@ -74,7 +76,7 @@ def run_experiments():
         # STAGE 1
         for method in STAGE1_METHODS:
             if method == "":
-                # No SSL
+                # No SSL, plain VQVAE
                 for run in range(NUM_RUNS_PER):
                     train_vqvae(
                         config=c,
@@ -95,7 +97,7 @@ def run_experiments():
                 c["VQVAE"]["recon_augmented_view_scale"] = 0.0
                 c["VQVAE"]["recon_original_view_scale"] = 1.0
 
-                # With SSL
+                # With SSL no orthogonal reg
                 for run in range(NUM_RUNS_PER):
                     train_ssl_vqvae(
                         config=c,
@@ -108,10 +110,11 @@ def run_experiments():
                         torch_seed=0,
                     )
 
-                # use othogonal codebook:
+                # With SSL and orthogonal reg
                 c["VQVAE"]["orthogonal_reg_weight"] = 10
                 c["VQVAE"]["recon_augmented_view_scale"] = 0.0
                 c["VQVAE"]["recon_original_view_scale"] = 1.0
+
                 for run in range(NUM_RUNS_PER):
                     train_ssl_vqvae(
                         config=c,
