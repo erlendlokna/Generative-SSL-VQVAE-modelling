@@ -1,5 +1,5 @@
 dataset:
-  dataset_name: "UWaveGestureLibraryAll"
+  dataset_name: "FordA"
   in_channels: 1
   data_scaling: True
   batch_sizes:
@@ -16,7 +16,7 @@ trainer_params:
   gpus:
     - 0
   max_epochs:
-    stage1: 5 #2000
+    stage1: 1 #2000
     stage2: 2 #1000 #1000 #10000
 
 encoder:
@@ -39,17 +39,11 @@ VQVAE:
   commitment_weight: 1
   emb_dropout: 0.
   perceptual_loss_weight: 0
+  orthogonal_reg_weight: 10
 
   # Additional hyperparameters for Two branch VQVAE with codebook decorrelation
-  recon_alternate_view_scale: 0.1
-  recon_original_view_scale: 0.9 #prioritize original view
-
-  decorr_codebook: True
-  decorr_weight: 0.1
-  decorr_weight_schedule: False
-  decorr_weight_schedule_p: 2
-  decorr_weight_schedule_min: 0.5
-  decorr_weight_schedule_max: 1.5
+  recon_augmented_view_scale: 0.0
+  recon_original_view_scale: 1.0 #prioritize original view
 
   probe_test_per: 100
 
@@ -119,7 +113,7 @@ augmentations:
 
   time_augs:
     #- "noise"
-    #- "amplitude_resize"
+    - "amplitude_resize"
     - "slope"
     #- 'flip'
     # - "noise_window"
@@ -127,11 +121,11 @@ augmentations:
     #- "random_masks"
     #- "block"
     #- "band"
-    - "phase"
+    # "phase"
     #- 'rotation'
     # - "gaussian"
     #- "shear"
-    - "scale"
+    # - "scale"
 
   aug_params:
     n_fft: 32

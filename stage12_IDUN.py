@@ -35,7 +35,7 @@ STAGE2_EPOCHS = 3000
 
 NUM_RUNS_PER = 1
 
-STAGE1_METHODS = ["vibcreg"]
+STAGE1_METHODS = ["", "vibcreg"]
 STAGE2_METHODS = [""]  # "vibcreg"]
 
 SSL_WEIGHTS = {"barlowtwins": 1.0, "vicreg": 0.01, "vibcreg": 0.01, "": 0}
@@ -90,21 +90,24 @@ def run_experiments():
             elif method != "":
                 c["SSL"]["stage1_method"] = method
                 c["SSL"]["stage1_weight"] = SSL_WEIGHTS[method]
-                c["VQVAE"]["decorr_codebook"] = False
-                # With SSL
-                # for run in range(NUM_RUNS_PER):
-                #    train_ssl_vqvae(
-                #        config=c,
-                #        train_data_loader=train_data_loader_aug,
-                #        test_data_loader=test_data_loader,
-                #        do_validate=True,
-                #        gpu_device_idx=0,
-                #        wandb_run_name=f"{model_filename(c, 'sslvqvae')}-{dataset}-run{run+1}",
-                #        wandb_project_name=project_name_stage1,
-                #        torch_seed=0,
-                #    )
 
-                c["VQVAE"]["decorr_codebook"] = True
+                c["VQVAE"]["orthogonal_reg_weight"] = 0
+
+                # With SSL
+                for run in range(NUM_RUNS_PER):
+                    train_ssl_vqvae(
+                        config=c,
+                        train_data_loader=train_data_loader_aug,
+                        test_data_loader=test_data_loader,
+                        do_validate=True,
+                        gpu_device_idx=0,
+                        wandb_run_name=f"{model_filename(c, 'sslvqvae')}-{dataset}-run{run+1}",
+                        wandb_project_name=project_name_stage1,
+                        torch_seed=0,
+                    )
+
+                # use othogonal codebook:
+                c["VQVAE"]["orthogonal_reg_weight"] = 10
 
                 for run in range(NUM_RUNS_PER):
                     train_ssl_vqvae(
@@ -113,16 +116,19 @@ def run_experiments():
                         test_data_loader=test_data_loader,
                         do_validate=True,
                         gpu_device_idx=0,
-                        wandb_run_name=f"{model_filename(c, 'ssl-decorr-vqvae')}-{dataset}-run{run+1}",
+                        wandb_run_name=f"{model_filename(c, 'sslvqvae')}-{dataset}-run{run+1}",
                         wandb_project_name=project_name_stage1,
                         torch_seed=0,
                     )
 
         # STAGE 2
+        c = config.copy()  # reset
+
         for method_1 in STAGE1_METHODS:
             c["SSL"]["stage1_method"] = method_1
             c["SSL"]["stage1_weight"] = SSL_WEIGHTS[method_1]
-            c["VQVAE"]["decorr_codebook"] = False
+            # No orthogonal codebook
+            c["VQVAE"]["orthogonal_reg_weight"] = 0
 
             for method_2 in STAGE2_METHODS:
                 c["SSL"]["stage2_method"] = method_2
@@ -139,8 +145,7 @@ def run_experiments():
                         torch_seed=0,
                     )
 
-            c["VQVAE"]["decorr_codebook"] = True
-            c["VQVAE"]["decorr_weight_schedule"] = False
+            c["VQVAE"]["orthogonal_reg_weight"] = 10
 
             for method_2 in STAGE2_METHODS:
                 c["SSL"]["stage2_method"] = method_2

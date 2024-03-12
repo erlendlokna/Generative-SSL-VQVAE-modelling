@@ -28,63 +28,6 @@ import wandb
 from sklearn.manifold import TSNE
 
 
-def decorrelation_loss(codebook, device):
-    corr = torch.corrcoef(codebook).to(device)
-    decorr_loss = torch.sum(torch.abs(corr - torch.eye(corr.shape[0]).to(device))) / (
-        corr.shape[0] * (corr.shape[0] - 1)
-    )
-
-    return decorr_loss
-
-
-def covariance_loss(codebook, device):
-
-    codebook_mean = torch.mean(codebook, dim=0, keepdim=True)
-    codebook_centered = codebook - codebook_mean
-    cov_matrix = torch.matmul(codebook_centered.T, codebook_centered) / (
-        codebook.size(0) - 1
-    )
-
-    # Create an identity matrix of the same size as the covariance matrix
-    identity_matrix = torch.eye(cov_matrix.size(0)).to(device)
-
-    # Calculate loss as the sum of squared off-diagonal elements of the covariance matrix
-    # This is equivalent to minimizing the Frobenius norm of the off-diagonal elements
-    off_diagonal_mask = 1 - identity_matrix
-    off_diagonal_elements = cov_matrix * off_diagonal_mask
-    decorr_loss = torch.norm(off_diagonal_elements, p="fro") ** 2 / (
-        cov_matrix.size(0) * (cov_matrix.size(0) - 1)
-    )
-
-    return decorr_loss
-
-
-def linear_weight_schedule(
-    current_epoch, start_epoch, end_epoch, start_weight, end_weight
-):
-    if current_epoch < start_epoch:
-        return start_weight
-    elif current_epoch > end_epoch:
-        return end_weight
-    else:
-        return start_weight + (end_weight - start_weight) * (
-            (current_epoch - start_epoch) / (end_epoch - start_epoch)
-        )
-
-
-def exponential_weight_schedule(
-    current_epoch, max_epoch, start_weight, end_weight, base=2
-):
-    if current_epoch > max_epoch:
-        return end_weight
-    else:
-        epoch_ratio = current_epoch / max_epoch
-        weight = start_weight + (end_weight - start_weight) * (
-            (base**epoch_ratio) - 1
-        ) / (base - 1)
-        return weight
-
-
 class Exp_SSL_VQVAE(ExpBase):
     """
     VQVAE with a two branch encoder structure. Incorporates an additional Non contrastiv SSL objective for the encoder.
@@ -161,109 +104,89 @@ class Exp_SSL_VQVAE(ExpBase):
 
         self.SSL_loss_weight = config["SSL"]["stage1_weight"]
 
-        self.recon_alt_view_scale = config["VQVAE"]["recon_alternate_view_scale"]
+        self.recon_aug_view_scale = config["VQVAE"]["recon_augmented_view_scale"]
         self.recon_orig_view_scale = config["VQVAE"]["recon_original_view_scale"]
 
-        self.codebook_decorrelation = config["VQVAE"]["decorr_codebook"]
-        self.decorrelate_weight_schedule = config["VQVAE"]["decorr_weight_schedule"]
-
-        self.decorrelation_weight_schedule = exponential_weight_schedule
-        self.decorr_weight = config["VQVAE"]["decorr_weight"]
-        self.p = config["VQVAE"]["decorr_weight_schedule_p"]
-        self.decorr_weight_schedule_min = config["VQVAE"]["decorr_weight_schedule_min"]
-        self.decorr_weight_schedule_max = config["VQVAE"]["decorr_weight_schedule_max"]
-
-    def forward(self, batch, twobranch=True):
+    def forward(self, batch, training=True):
         # One branch or two branch forward pass
         # using one branch if validation step.
 
-        if twobranch:
-            (x, x_alt_view), y = batch  # x and augmented / alternate x
+        if training:
+            (x, x_aug_view), y = batch  # x and augmented view
         else:
             x, y = batch
 
-        recons_loss = {"time": 0.0, "timefreq": 0.0, "perceptual": 0.0}
-        vq_loss = 0.0
+        recons_loss = {
+            "orig.time": 0.0,
+            "orig.timefreq": 0.0,
+            "aug.time": 0.0,
+            "aug.timefreq": 0.0,
+        }
+
+        vq_loss = None
         perplexity = 0.0
+        codebook_decorr_loss = 0.0
+        SSL_loss = 0.0
 
         C = x.shape[1]
 
         # --- Processing original view ---
-        # STFT
         u = time_to_timefreq(x, self.n_fft, C)
 
         if not self.decoder.is_upsample_size_updated:
             self.decoder.register_upsample_size(torch.IntTensor(np.array(u.shape[2:])))
 
-        # Encode
         z = self.encoder(u)
-        # Vector Quantization and quantization loss
         z_q, indices, vq_loss, perplexity = quantize(z, self.vq_model)
-        # Decode original view
         uhat = self.decoder(z_q)
-        # ISTFT
         xhat = timefreq_to_time(uhat, self.n_fft, C)
-        # Make sure x and xhat have the same length. Padding may occur in the ISTFT and STFT process
         x, xhat = shape_match(x, xhat)
 
         # losses
-        time_loss_orig_view = F.mse_loss(x, xhat)
-        timefreq_loss_orig_view = F.mse_loss(u, uhat)
+        recons_loss["orig.time"] = F.mse_loss(x, xhat) * self.recon_orig_view_scale
+        recons_loss["orig.timefreq"] = F.mse_loss(u, uhat) * self.recon_orig_view_scale
 
-        # --- Processing alternate view and SSL ---
-        if twobranch:
+        # --- Processing alternate view with SSL ---
+        if training:
             # Same process for alternate view
-            u_alt_view = time_to_timefreq(x_alt_view, self.n_fft, C)  # STFT
-            z_alt_view = self.encoder(u_alt_view)  # Encode
-
-            with torch.no_grad():
-                # Stop gradient for the alternate view reconstruction
-                zq_alt_view, indices_alt_view, vq_loss_alt_view, perplexity_alt_view = (
-                    quantize(z_alt_view, self.vq_model)
-                )
-                uhat_alt_view = self.decoder(zq_alt_view)  # Decode
-                xhat_alt_view = timefreq_to_time(uhat_alt_view, self.n_fft, C)  # ISTFT
-                # Make sure x and xhat have the same length. Padding may occur in the ISTFT and STFT process:
-                x_alt_view, xhat_alt_view = shape_match(x_alt_view, xhat_alt_view)
-                # losses:
-                time_loss_alt_view = F.mse_loss(x_alt_view, xhat_alt_view)
-                timefreq_loss_alt_view = F.mse_loss(u_alt_view, uhat_alt_view)
+            u_aug_view = time_to_timefreq(x_aug_view, self.n_fft, C)  # STFT
+            z_aug_view = self.encoder(u_aug_view)  # Encode
 
             # --- SSL part ---
             # projecting both views
+            z_aug_view_projected = self.SSL_method(z_aug_view)
             z_projected = self.SSL_method(z)
-            z_alt_view_projected = self.SSL_method(z_alt_view)
             # calculating similarity loss in projected space:
-            SSL_loss = self.SSL_method.loss_function(z_projected, z_alt_view_projected)
-        else:
-            SSL_loss = torch.tensor(0.0)  # no SSL loss if validation step
-            time_loss_alt_view = torch.tensor(0.0)
-            timefreq_loss_alt_view = torch.tensor(0.0)
+            SSL_loss = self.SSL_method.loss_function(z_projected, z_aug_view_projected)
+            SSL_loss = SSL_loss * self.SSL_loss_weight
 
-        # --- Losses ---
-        # scales:
-        alt_scale = self.recon_alt_view_scale
-        orig_scale = self.recon_orig_view_scale
-        # weighted sum of the losses
-        recons_loss["time"] = (
-            orig_scale * time_loss_orig_view + alt_scale * time_loss_alt_view
-        )
-        recons_loss["timefreq"] = (
-            orig_scale * timefreq_loss_orig_view + alt_scale * timefreq_loss_alt_view
-        )
+            if self.recon_aug_view_scale > 0.0:
+                with torch.no_grad():
+                    self.vq_model.training = False
+                    self.vq_model._codebook.training = False  # freeze codebook
+                    zq_aug_view, _, _, _ = quantize(z_aug_view, self.vq_model)
+                    self.vq_model._codebook.training = True
+                    self.vq_model.training = True
 
-        if self.codebook_decorrelation:
-            codebook_decorr_loss = covariance_loss(
-                self.vq_model.codebook, device=self.device
-            )
+                    uhat_aug_view = self.decoder(zq_aug_view)  # Decode
+                    xhat_aug_view = timefreq_to_time(uhat_aug_view, self.n_fft, C)
+                    # Make sure x and xhat have the same length. Padding may occur in the ISTFT and STFT process:
+                    x_aug_view, xhat_aug_view = shape_match(x_aug_view, xhat_aug_view)
 
-        else:
-            codebook_decorr_loss = torch.tensor(0.0)
+                # Stop gradient for the alternate view
+                recons_loss["aug.time"] = (
+                    F.mse_loss(x_aug_view.detach(), xhat_aug_view.detach())
+                    * self.recon_aug_view_scale
+                )
+                recons_loss["aug.timefreq"] = (
+                    F.mse_loss(u_aug_view.detach(), uhat_aug_view.detach())
+                    * self.recon_aug_view_scale
+                )
 
         # plot both views and reconstruction
         r = np.random.uniform(0, 1)
 
-        if r < 0.01 and twobranch:
+        if r < 0.01 and training:
             b = np.random.randint(0, x.shape[0])
             c = np.random.randint(0, x.shape[1])
             fig, ax = plt.subplots()
@@ -276,7 +199,7 @@ class Exp_SSL_VQVAE(ExpBase):
                 alpha=1,
             )
             ax.plot(
-                x_alt_view[b, c].cpu(),
+                x_aug_view[b, c].cpu(),
                 label=f"augmented view",
                 c="gray",
                 alpha=0.3,
@@ -291,38 +214,23 @@ class Exp_SSL_VQVAE(ExpBase):
             wandb.log({"Reconstruction": wandb.Image(plt)})
             plt.close()
 
-        return recons_loss, vq_loss, perplexity, SSL_loss, codebook_decorr_loss
+        return recons_loss, vq_loss, perplexity, SSL_loss
 
     def training_step(self, batch, batch_idx):
         x = batch
         # forward:
-        recons_loss, vq_loss, perplexity, SSL_loss, codebook_decorr_loss = self.forward(
-            x, twobranch=True
-        )
-
-        # --- VQVAE Loss ---
-        vqvae_loss = (
-            recons_loss["time"]
-            + recons_loss["timefreq"]
-            + vq_loss["loss"]
-            + recons_loss["perceptual"]
-        )
-        # --- SSL Loss ---
-        SSL_loss = SSL_loss * self.SSL_loss_weight
-
+        recons_loss, vq_loss, perplexity, SSL_loss = self.forward(x, training=True)
         # --- Total Loss ---
-        if self.decorrelate_weight_schedule:
-            decorr_weight = self.decorrelation_weight_schedule(
-                self.current_epoch,
-                max_epoch=self.last_epoch,
-                start_weight=self.decorr_weight_schedule_min,
-                end_weight=self.decorr_weight_schedule_max,
-                base=self.p,
+        loss = (
+            (
+                recons_loss["orig.time"]
+                + recons_loss["orig.timefreq"]
+                + recons_loss["aug.time"]
+                + recons_loss["aug.timefreq"]
             )
-        else:
-            decorr_weight = self.decorr_weight
-
-        loss = vqvae_loss + SSL_loss + decorr_weight * codebook_decorr_loss
+            + vq_loss["loss"]
+            + SSL_loss
+        )
 
         # lr scheduler
         sch = self.lr_schedulers()
@@ -331,15 +239,17 @@ class Exp_SSL_VQVAE(ExpBase):
         # log
         loss_hist = {
             "loss": loss,
-            "recons_loss.time": recons_loss["time"],
-            "recons_loss.timefreq": recons_loss["timefreq"],
             "commit_loss": vq_loss["commit_loss"],
             #'commit_loss': vq_loss, #?
             "perplexity": perplexity,
-            "perceptual": recons_loss["perceptual"],
             self.SSL_method.name + "_loss": SSL_loss,
-            "codebook_decorrelation_loss": codebook_decorr_loss,
-            "decorr_weight": decorr_weight,
+            "recons_loss.time": recons_loss["orig.time"] + recons_loss["aug.time"],
+            "recons_loss.timefreq": recons_loss["orig.timefreq"]
+            + recons_loss["aug.timefreq"],
+            "recons_loss.orig": recons_loss["orig.time"] + recons_loss["orig.timefreq"],
+            "recons_loss.alt": recons_loss["aug.time"] + recons_loss["aug.timefreq"],
+            "orthogonal_reg_loss": vq_loss["orthogonal_reg_loss"],
+            "vq_loss": vq_loss["loss"],
         }
 
         wandb.log(loss_hist)
@@ -349,27 +259,24 @@ class Exp_SSL_VQVAE(ExpBase):
 
     def validation_step(self, batch, batch_idx):
         x = batch
-        recons_loss, vq_loss, perplexity, _, decorr_loss = self.forward(
-            x, twobranch=False
-        )
+        recons_loss, vq_loss, perplexity, SSL_loss = self.forward(x, training=False)
 
         # only VQVAE loss
-        loss = (
-            recons_loss["time"]
-            + recons_loss["timefreq"]
-            + vq_loss["loss"]
-            + recons_loss["perceptual"]
-        )
+        loss = recons_loss["orig.time"] + recons_loss["orig.timefreq"]
 
         # log
         val_loss_hist = {
-            "validation_loss": loss,
-            "validation_recons_loss.time": recons_loss["time"],
-            "validation_recons_loss.timefreq": recons_loss["timefreq"],
-            "validation_commit_loss": vq_loss["commit_loss"],
-            #'validation_commit_loss': vq_loss, #?
-            "validation_perplexity": perplexity,
-            "validation_perceptual": recons_loss["perceptual"],
+            "val_loss": loss,
+            #'commit_loss': vq_loss, #?
+            "val_perplexity": perplexity,
+            "val_" + self.SSL_method.name + "_loss": SSL_loss,
+            "val_recons_loss.time": recons_loss["orig.time"] + recons_loss["aug.time"],
+            "val_recons_loss.timefreq": recons_loss["orig.timefreq"]
+            + recons_loss["aug.timefreq"],
+            "val_recons_loss.orig": recons_loss["orig.time"]
+            + recons_loss["orig.timefreq"],
+            "val_recons_loss.aug": recons_loss["aug.time"]
+            + recons_loss["aug.timefreq"],
         }
 
         detach_the_unnecessary(val_loss_hist)
@@ -404,28 +311,43 @@ class Exp_SSL_VQVAE(ExpBase):
 
     def test_step(self, batch, batch_idx):
         x = batch
-        recons_loss, vq_loss, perplexity, _ = self.forward(x, twobranch=False)
+        recons_loss, vq_loss, perplexity, SSL_loss, codebook_decorr_loss = self.forward(
+            x, training=False
+        )
 
+        # only VQVAE loss
         loss = (
-            recons_loss["time"]
-            + recons_loss["timefreq"]
+            (
+                recons_loss["orig.time"]
+                + recons_loss["orig.timefreq"]
+                + recons_loss["aug.time"]
+                + recons_loss["aug.timefreq"]
+            )
             + vq_loss["loss"]
-            + recons_loss["perceptual"]
+            + SSL_loss
+            + codebook_decorr_loss
         )
 
         # log
-        loss_hist = {
-            "loss": loss,
-            "recons_loss.time": recons_loss["time"],
-            "recons_loss.timefreq": recons_loss["timefreq"],
-            "commit_loss": vq_loss["commit_loss"],
+        val_loss_hist = {
+            "val_loss": loss,
             #'commit_loss': vq_loss, #?
-            "perplexity": perplexity,
-            "perceptual": recons_loss["perceptual"],
+            "val_perplexity": perplexity,
+            self.SSL_method.name + "_loss": SSL_loss,
+            "val_codebook_decorrelation_loss": codebook_decorr_loss,
+            "val_recons_loss.time": recons_loss["orig.time"] + recons_loss["aug.time"],
+            "val_recons_loss.timefreq": recons_loss["orig.timefreq"]
+            + recons_loss["aug.timefreq"],
+            "val_recons_loss.orig": recons_loss["orig.time"]
+            + recons_loss["orig.timefreq"],
+            "val_recons_loss.aug": recons_loss["aug.time"]
+            + recons_loss["aug.timefreq"],
         }
 
-        detach_the_unnecessary(loss_hist)
-        return loss_hist
+        detach_the_unnecessary(val_loss_hist)
+        wandb.log(val_loss_hist)
+
+        return val_loss_hist
 
     def downstream_step(self, tsne=False):
         print("performing downstream tasks..")
