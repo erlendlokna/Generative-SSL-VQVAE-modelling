@@ -21,8 +21,8 @@ UCR_SUBSET = [
     # "ECG5000",
     # "TwoPatterns",
     "FordA",
-    # "UWaveGestureLibraryAll",
-    # "FordB",
+    "UWaveGestureLibraryAll",
+    "FordB",
     # "ChlorineConcentration",
     # "ShapesAll",
 ]
@@ -35,7 +35,7 @@ STAGE2_EPOCHS = 3000
 
 NUM_RUNS_PER = 1
 
-STAGE1_METHODS = ["", "vibcreg"]
+STAGE1_METHODS = ["vibcreg"]
 STAGE2_METHODS = [""]  # "vibcreg"]
 
 SSL_WEIGHTS = {"barlowtwins": 1.0, "vicreg": 0.01, "vibcreg": 0.01, "": 0}
@@ -92,6 +92,8 @@ def run_experiments():
                 c["SSL"]["stage1_weight"] = SSL_WEIGHTS[method]
 
                 c["VQVAE"]["orthogonal_reg_weight"] = 0
+                c["VQVAE"]["recon_augmented_view_scale"] = 0.0
+                c["VQVAE"]["recon_original_view_scale"] = 1.0
 
                 # With SSL
                 for run in range(NUM_RUNS_PER):
@@ -108,7 +110,8 @@ def run_experiments():
 
                 # use othogonal codebook:
                 c["VQVAE"]["orthogonal_reg_weight"] = 10
-
+                c["VQVAE"]["recon_augmented_view_scale"] = 0.0
+                c["VQVAE"]["recon_original_view_scale"] = 1.0
                 for run in range(NUM_RUNS_PER):
                     train_ssl_vqvae(
                         config=c,
@@ -129,6 +132,8 @@ def run_experiments():
             c["SSL"]["stage1_weight"] = SSL_WEIGHTS[method_1]
             # No orthogonal codebook
             c["VQVAE"]["orthogonal_reg_weight"] = 0
+            c["VQVAE"]["recon_augmented_view_scale"] = 0.0
+            c["VQVAE"]["recon_original_view_scale"] = 1.0
 
             for method_2 in STAGE2_METHODS:
                 c["SSL"]["stage2_method"] = method_2
@@ -146,6 +151,8 @@ def run_experiments():
                     )
 
             c["VQVAE"]["orthogonal_reg_weight"] = 10
+            c["VQVAE"]["recon_augmented_view_scale"] = 0.0
+            c["VQVAE"]["recon_original_view_scale"] = 1.0
 
             for method_2 in STAGE2_METHODS:
                 c["SSL"]["stage2_method"] = method_2

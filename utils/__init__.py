@@ -112,6 +112,7 @@ def model_filename(config, model_type):
     )
 
     ortogonal = config["VQVAE"]["orthogonal_reg_weight"] > 0
+    single_view = config["VQVAE"]["recon_augmented_view_scale"] == 0
 
     stage1_text = ""
     stage2_text = ""
@@ -120,6 +121,8 @@ def model_filename(config, model_type):
         stage1_text = f"{stage1_method}_{stage1_weight}_"
         if ortogonal:
             stage1_text += "orthogonal_"
+        if single_view:
+            stage1_text += "single_"
 
     # Only MAGE and sslmaskgit model has SSL on stage2
     if stage2_method != "" and (model_type == "MAGE" or model_type == "sslmaskgit"):
