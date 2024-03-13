@@ -42,8 +42,8 @@ VQVAE:
   orthogonal_reg_weight: 10
 
   # Additional hyperparameters for Two branch VQVAE with codebook decorrelation
-  recon_augmented_view_scale: 0.0
-  recon_original_view_scale: 1.0 #prioritize original view
+  recon_augmented_view_scale: 0.1
+  recon_original_view_scale: 0.9 #prioritize original view
 
   probe_test_per: 100
 

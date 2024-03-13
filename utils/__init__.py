@@ -123,6 +123,8 @@ def model_filename(config, model_type):
             stage1_text += "orthogonal_"
         if single_view:
             stage1_text += "single_"
+        else:
+            stage1_text += "double_"
 
     # Only MAGE and sslmaskgit model has SSL on stage2
     if stage2_method != "" and (model_type == "MAGE" or model_type == "sslmaskgit"):

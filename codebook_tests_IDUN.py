@@ -57,32 +57,8 @@ def run_experiments():
             batch_size, dataset_importer, config, augment=False, kind="test"
         )
 
-        # for run in range(NUM_RUNS_PER):
-        #    train_vqvae(
-        #        c,
-        #        train_data_loader_no_aug,
-        #        test_data_loader,
-        #        gpu_device_idx=0,
-        #        do_validate=True,
-        #        wandb_project_name=project_name,
-        #        wandb_run_name=f"VQVAE-run{run}",
-        #    )
-
-        # for run in range(NUM_RUNS_PER):
-        #    c["VQVAE"]["decorrelate_codebook"] = False
-        #    train_ssl_vqvae(
-        #        c,
-        #        train_data_loader_aug,
-        #        test_data_loader,
-        #        gpu_device_idx=0,
-        #        do_validate=True,
-        #        wandb_project_name=project_name,
-        #        wandb_run_name=f"SSLVQVAE_run{run}",
-        #    )
-
         for run in range(NUM_RUNS_PER):
-            c["VQVAE"]["decorr_codebook"] = True
-            c["VQVAE"]["decorr_weight_schedule"] = False
+
             train_ssl_vqvae(
                 c,
                 train_data_loader_aug,
@@ -92,6 +68,7 @@ def run_experiments():
                 wandb_project_name=project_name,
                 wandb_run_name=f"SSLVQVAE_decorr_run{run}",
             )
+
         for run in range(NUM_RUNS_PER):
             c["VQVAE"]["decorr_codebook"] = True
             c["VQVAE"]["decorr_weight_schedule"] = True
