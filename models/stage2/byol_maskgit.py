@@ -28,6 +28,25 @@ from utils import (
 )
 
 
+class EMA:
+    def __init__(self, beta):
+        super().__init__()
+        self.beta = beta
+
+    def update_average(self, old, new):
+        if old is None:
+            return new
+        return old * self.beta + (1 - self.beta) * new
+
+
+def update_moving_average(ema_updater, ma_model, current_model):
+    for current_params, ma_params in zip(
+        current_model.parameters(), ma_model.parameters()
+    ):
+        old_weight, up_weight = ma_params.data, current_params.data
+        ma_params.data = ema_updater.update_average(old_weight, up_weight)
+
+
 class BYOLMaskGIT(nn.Module):
     """
     references:
@@ -43,6 +62,7 @@ class BYOLMaskGIT(nn.Module):
         T: int,
         config: dict,
         n_classes: int,
+        moving_average_decay=0.99,
         **kwargs,
     ):
         super().__init__()
@@ -135,6 +155,8 @@ class BYOLMaskGIT(nn.Module):
             online=False,
         )
 
+        self.target_ema_updater = EMA(moving_average_decay)
+
         # stochastic codebook sampling
         self.vq_model._codebook.sample_codebook_temp = stochastic_sampling
 
@@ -174,41 +196,41 @@ class BYOLMaskGIT(nn.Module):
         _, s = self.encode_to_z_q(x, self.encoder, self.vq_model)  # (b n)
 
         # randomly sample `t`
-        t1 = np.random.uniform(0, 1)
-        t2 = np.random.uniform(0, 1)
+        mask_token_ids = self.mask_token_ids
+        s_M_online = self.create_masks(s, mask_token_ids)  # (b n)
+        s_M_target = self.create_masks(s, mask_token_ids)  # (b n)
 
-        # create masks
-        n_masks1 = math.floor(self.gamma(t1) * s.shape[1])
-        rand1 = torch.rand(s.shape, device=device)  # (b n)
-        mask1 = torch.zeros(s.shape, dtype=torch.bool, device=device)
-        mask1.scatter_(dim=1, index=rand1.topk(n_masks1, dim=1).indices, value=True)
-
-        n_masks2 = math.floor(self.gamma(t2) * s.shape[1])
-        rand2 = torch.rand(s.shape, device=device)  # (b n)
-        mask2 = torch.zeros(s.shape, dtype=torch.bool, device=device)
-        mask2.scatter_(dim=1, index=rand2.topk(n_masks2, dim=1).indices, value=True)
-
-        # masked tokens
-        masked_indices = self.mask_token_ids * torch.ones_like(
-            s, device=device
-        )  # (b n)
-
-        s_M1 = mask1 * s + (~mask1) * masked_indices
-        s_M2 = mask2 * s + (~mask2) * masked_indices  # (b n)
-
-        # prediction
         logits, online_representation = self.online_transformer(
-            s_M1.detach(), class_condition=y, return_representations=True
+            s_M_online.detach(), class_condition=y, return_representation=True
         )  # (b n codebook_size)
 
         with torch.no_grad():
             target_representation = self.target_transformer(
-                s_M2.detach(), class_condition=y
+                s_M_target.detach(), class_condition=y
             )
 
         target = s  # (b n)
 
         return logits, target, online_representation, target_representation
+
+    def create_masks(self, s, mask_token_ids):
+        t = np.random.uniform(0, 1)
+
+        n_masks = math.floor(self.gamma(t) * s.shape[1])
+        rand = torch.rand(s.shape, device=s.device)  # (b n)
+        mask = torch.zeros(s.shape, dtype=torch.bool, device=s.device)
+        mask.scatter_(dim=1, index=rand.topk(n_masks, dim=1).indices, value=True)
+
+        masked_indices = mask_token_ids * torch.ones_like(s, device=s.device)  # (b n)
+
+        s_M = mask * s + (~mask) * masked_indices  # (b n)
+
+        return s_M
+
+    def update_moving_average(self):
+        update_moving_average(
+            self.target_ema_updater, self.target_transformer, self.online_transformer
+        )
 
     def gamma_func(self, mode="cosine"):
         if mode == "linear":

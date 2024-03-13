@@ -17,7 +17,7 @@ trainer_params:
     - 0
   max_epochs:
     stage1: 1 #2000
-    stage2: 2 #1000 #1000 #10000
+    stage2: 200 #1000 #1000 #10000
 
 encoder:
   dim: 64
@@ -82,8 +82,8 @@ class_guidance:
   guidance_scale: 1.
 
 SSL:
-  stage1_method: "vibcreg" #"vibcreg" # "barlowtwins", "vicreg", "vibcreg" or empty
-  stage1_weight: 0.1 # VibCReg: 0.1, BarlowTwins: 1, VICReg: 0.1
+  stage1_method: "" #"vibcreg" # "barlowtwins", "vicreg", "vibcreg" or empty
+  stage1_weight: 0.01 # VibCReg: 0.1, BarlowTwins: 1, VICReg: 0.1
   stage2_method: "vibcreg" #"barlowtwins" "vicreg", "vibcreg"
   stage2_weight: 0.1
 
@@ -125,14 +125,14 @@ augmentations:
     #- 'rotation'
     # - "gaussian"
     #- "shear"
-    # - "scale"
+    #- "scale"
 
   aug_params:
     n_fft: 32
     #Time
     noise_std: 0.01
     noise_window_scale: 0.4
-    AmpR_rate: 0.1
+    AmpR_rate: 0.2
     slope_rate: 0.005
     #TimeFreq
     #Block aug:

@@ -6,10 +6,9 @@ from utils import (
     model_filename,
 )
 
-from trainers.train_vqvae import train_vqvae
-from trainers.train_ssl_vqvae import train_ssl_vqvae
+
 from trainers.train_maskgit import train_maskgit
-from trainers.train_ssl_maskgit import train_ssl_maskgit
+from trainers.train_byol_maskgit import train_byol_maskgit
 from trainers.train_mage import train_mage
 
 UCR_SUBSET = [
@@ -19,7 +18,7 @@ UCR_SUBSET = [
     # "ECG5000",
     # "TwoPatterns",
     "FordA",
-    # "UWaveGestureLibraryAll",
+    "UWaveGestureLibraryAll",
     # "FordB",
     # "ChlorineConcentration",
     # "ShapesAll",
@@ -36,7 +35,7 @@ NUM_RUNS_PER = 1
 STAGE1_METHODS = [""]
 STAGE2_METHODS = ["vibcreg"]  # "vibcreg"]
 
-SSL_WEIGHTS = {"barlowtwins": 1.0, "vicreg": 0.01, "vibcreg": 0.01, "": 0}
+SSL_WEIGHTS = {"barlowtwins": 1.0, "vicreg": 0.01, "vibcreg": 0.001, "": 0}
 
 
 def run_experiments():
@@ -87,13 +86,13 @@ def run_experiments():
                         )
                 else:
                     for run in range(NUM_RUNS_PER):
-                        train_mage(
+                        train_byol_maskgit(
                             config=c,
                             train_data_loader=train_data_loader_no_aug,
                             test_data_loader=test_data_loader,
                             do_validate=True,
                             gpu_device_idx=0,
-                            wandb_run_name=f"{model_filename(c, 'MAGE')}-{dataset}-run{run+1}",
+                            wandb_run_name=f"{model_filename(c, 'byolmaskgit')}-{dataset}-run{run+1}",
                             wandb_project_name=project_name_stage2,
                         )
 

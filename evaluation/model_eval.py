@@ -18,7 +18,7 @@ from sklearn.manifold import TSNE
 
 from models.stage2.maskgit import MaskGIT
 from models.stage2.mage import MAGE
-from models.stage2.ssl_maskgit import SSLMaskGIT
+from models.stage2.byol_maskgit import BYOLMaskGIT
 from preprocessing.preprocess_ucr import UCRDatasetImporter
 from models.stage2.sample import unconditional_sample, conditional_sample
 from supervised_FCN.example_pretrained_model_loading import load_pretrained_FCN
@@ -107,7 +107,7 @@ class Evaluation(object):
 
         return x_new
 
-    def sampleSSLMaskGit(
+    def sampleBYOLMaskGit(
         self,
         n_samples: int,
         input_length: int,
@@ -118,7 +118,7 @@ class Evaluation(object):
         assert kind in ["unconditional", "conditional"]
 
         # build
-        maskgit = SSLMaskGIT(
+        byol_maskgit = BYOLMaskGIT(
             input_length,
             **self.config["MaskGIT"],
             config=self.config,
@@ -126,67 +126,25 @@ class Evaluation(object):
         ).to(self.device)
 
         # load
-        fname = f"{model_filename(self.config, 'sslmaskgit')}-{self.subset_dataset_name}.ckpt"
+        fname = f"{model_filename(self.config, 'byolmaskgit')}-{self.subset_dataset_name}.ckpt"
         try:
             ckpt_fname = os.path.join("saved_models", fname)
-            maskgit.load_state_dict(torch.load(ckpt_fname), strict=False)
+            byol_maskgit.load_state_dict(torch.load(ckpt_fname), strict=False)
         except FileNotFoundError:
             ckpt_fname = Path(tempfile.gettempdir()).joinpath(fname)
-            maskgit.load_state_dict(torch.load(ckpt_fname), strict=False)
+            byol_maskgit.load_state_dict(torch.load(ckpt_fname), strict=False)
 
         # inference mode
-        maskgit.eval()
+        byol_maskgit.eval()
 
         # sampling
         if kind == "unconditional":
             x_new = unconditional_sample(
-                maskgit, n_samples, self.device, batch_size=self.batch_size
+                byol_maskgit, n_samples, self.device, batch_size=self.batch_size
             )  # (b c l); b=n_samples, c=1 (univariate)
         elif kind == "conditional":
             x_new = conditional_sample(
-                maskgit, n_samples, self.device, class_index, self.batch_size
-            )  # (b c l); b=n_samples, c=1 (univariate)
-        else:
-            raise ValueError
-
-        return x_new
-
-    def sampleMAGE(
-        self,
-        n_samples: int,
-        input_length: int,
-        n_classes: int,
-        kind: str,
-        class_index: int = -1,
-    ):
-        assert kind in ["unconditional", "conditional"]
-
-        mage = MAGE(
-            input_length,
-            **self.config["MaskGIT"],
-            config=self.config,
-            n_classes=n_classes,
-        ).to(self.device)
-
-        fname = f"{model_filename(self.config, 'MAGE')}-{self.subset_dataset_name}.ckpt"
-        try:
-            ckpt_fname = os.path.join("saved_models", fname)
-            mage.load_state_dict(torch.load(ckpt_fname), strict=False)
-        except FileNotFoundError:
-            ckpt_fname = Path(tempfile.gettempdir()).joinpath(fname)
-            mage.load_state_dict(torch.load(ckpt_fname), strict=False)
-
-        # inference mode
-        mage.eval()
-
-        # sampling
-        if kind == "unconditional":
-            x_new = unconditional_sample(
-                mage, n_samples, self.device, batch_size=self.batch_size
-            )  # (b c l); b=n_samples, c=1 (univariate)
-        elif kind == "conditional":
-            x_new = conditional_sample(
-                mage, n_samples, self.device, class_index, self.batch_size
+                byol_maskgit, n_samples, self.device, class_index, self.batch_size
             )  # (b c l); b=n_samples, c=1 (univariate)
         else:
             raise ValueError

@@ -127,7 +127,7 @@ def model_filename(config, model_type):
             stage1_text += "double_"
 
     # Only MAGE and sslmaskgit model has SSL on stage2
-    if stage2_method != "" and (model_type == "MAGE" or model_type == "sslmaskgit"):
+    if stage2_method != "" and (model_type == "MAGE" or model_type == "byolmaskgit"):
         stage2_text = f"_{stage2_method}_{stage2_weight}"
 
     filename_parts = [

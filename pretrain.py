@@ -7,7 +7,7 @@ from argparse import ArgumentParser
 from trainers.train_vqvae import train_vqvae
 from trainers.train_ssl_vqvae import train_ssl_vqvae
 from trainers.train_mage import train_mage
-from trainers.train_ssl_maskgit import train_ssl_maskgit
+from trainers.train_byol_maskgit import train_byol_maskgit
 from trainers.train_maskgit import train_maskgit
 import torch
 
@@ -95,16 +95,9 @@ if __name__ == "__main__":
             wandb_project_name=wandb_project,
             torch_seed=0,
         )
-    elif args.model == "mage":
-        train_mage(
-            config,
-            train_data_loader,
-            test_data_loader,
-            do_validate=True,
-            gpu_device_idx=args.gpu_device_idx,
-        )
-    elif args.model == "sslmaskgit":
-        train_ssl_maskgit(
+
+    elif args.model == "byolmaskgit":
+        train_byol_maskgit(
             config,
             train_data_loader,
             test_data_loader,
