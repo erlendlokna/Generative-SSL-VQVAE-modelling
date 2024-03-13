@@ -38,6 +38,7 @@ class BidirectionalTransformer(nn.Module):
         n_classes: int,
         pretrained_tok_emb: nn.Parameter = None,
         freeze_pretrained_tokens: bool = False,
+        online=True,
         **kwargs
     ):
         """
@@ -103,6 +104,8 @@ class BidirectionalTransformer(nn.Module):
         self.ln = nn.LayerNorm(in_dim, eps=1e-12)
         self.drop = nn.Dropout(p=0.0)
 
+        self.online = online
+
     def class_embedding(
         self, class_condition: Union[None, torch.Tensor], batch_size: int, device
     ):
@@ -131,7 +134,12 @@ class BidirectionalTransformer(nn.Module):
         cls_emb = self.class_condition_emb(class_condition)  # (b 1 dim)
         return cls_emb
 
-    def forward(self, embed_ind, class_condition: Union[None, torch.Tensor] = None):
+    def forward(
+        self,
+        embed_ind,
+        class_condition: Union[None, torch.Tensor] = None,
+        return_representation=False,
+    ):
         device = embed_ind.device
 
         token_embeddings = self.tok_emb(embed_ind)  # (b n dim)
@@ -146,16 +154,26 @@ class BidirectionalTransformer(nn.Module):
         )  # (b, n, dim)
         embed = torch.cat((cls_emb, embed), dim=1)  # (b, 1+n, dim)
         embed = self.blocks(embed)  # (b, 1+n, dim)
-        embed = self.Token_Prediction(embed)[:, 1:, :]  # (b, n, dim)
 
-        logits = (
-            torch.matmul(embed, self.tok_emb.weight.T) + self.bias
-        )  # (b, n, codebook_size+1)
-        logits = logits[
-            :, :, :-1
-        ]  # remove the logit for the mask token.  # (b, n, codebook_size)
+        representation = embed[:, 1:, :]  # (b, n, dim)
 
-        return logits
+        if self.online:
+            embed = self.Token_Prediction(embed)[:, 1:, :]  # (b, n, dim)
+
+            logits = (
+                torch.matmul(embed, self.tok_emb.weight.T) + self.bias
+            )  # (b, n, codebook_size+1)
+            logits = logits[
+                :, :, :-1
+            ]  # remove the logit for the mask token.  # (b, n, codebook_size)
+
+            if return_representation:
+                return logits, representation
+            else:
+                return logits
+        else:
+            # Target BERT
+            return representation
 
 
 class PoolBidirectionalTransformer(nn.Module):

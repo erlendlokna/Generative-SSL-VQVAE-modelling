@@ -93,7 +93,7 @@ def run_experiments():
                 c["SSL"]["stage1_method"] = method
                 c["SSL"]["stage1_weight"] = SSL_WEIGHTS[method]
 
-                c["VQVAE"]["orthogonal_reg_weight"] = 0
+                c["VQVAE"]["orthogonal_reg_weight"] = 5.0
                 c["VQVAE"]["recon_augmented_view_scale"] = 0.0
                 c["VQVAE"]["recon_original_view_scale"] = 1.0
 
@@ -111,9 +111,9 @@ def run_experiments():
                     )
 
                 # With SSL and orthogonal reg
-                c["VQVAE"]["orthogonal_reg_weight"] = 10
-                c["VQVAE"]["recon_augmented_view_scale"] = 0.0
-                c["VQVAE"]["recon_original_view_scale"] = 1.0
+                c["VQVAE"]["orthogonal_reg_weight"] = 5.0
+                c["VQVAE"]["recon_augmented_view_scale"] = 0.1
+                c["VQVAE"]["recon_original_view_scale"] = 0.9
 
                 for run in range(NUM_RUNS_PER):
                     train_ssl_vqvae(
@@ -134,7 +134,7 @@ def run_experiments():
             c["SSL"]["stage1_method"] = method_1
             c["SSL"]["stage1_weight"] = SSL_WEIGHTS[method_1]
 
-            c["VQVAE"]["orthogonal_reg_weight"] = 0
+            c["VQVAE"]["orthogonal_reg_weight"] = 5.0
             c["VQVAE"]["recon_augmented_view_scale"] = 0.0
             c["VQVAE"]["recon_original_view_scale"] = 1.0
 
@@ -153,9 +153,9 @@ def run_experiments():
                         torch_seed=0,
                     )
 
-            c["VQVAE"]["orthogonal_reg_weight"] = 10
-            c["VQVAE"]["recon_augmented_view_scale"] = 0.0
-            c["VQVAE"]["recon_original_view_scale"] = 1.0
+            c["VQVAE"]["orthogonal_reg_weight"] = 5.0
+            c["VQVAE"]["recon_augmented_view_scale"] = 0.1
+            c["VQVAE"]["recon_original_view_scale"] = 0.9
 
             for method_2 in STAGE2_METHODS:
                 c["SSL"]["stage2_method"] = method_2
