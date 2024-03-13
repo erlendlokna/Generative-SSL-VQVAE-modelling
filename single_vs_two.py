@@ -93,10 +93,10 @@ def run_experiments():
                 c["SSL"]["stage1_method"] = method
                 c["SSL"]["stage1_weight"] = SSL_WEIGHTS[method]
 
-                c["VQVAE"]["orthogonal_reg_weight"] = 5.0
-                c["VQVAE"]["recon_augmented_view_scale"] = 0.0
-                c["VQVAE"]["recon_original_view_scale"] = 1.0
-
+                # c["VQVAE"]["orthogonal_reg_weight"] = 10.0
+                # c["VQVAE"]["recon_augmented_view_scale"] = 0.0
+                # c["VQVAE"]["recon_original_view_scale"] = 1.0
+                """
                 # With SSL no orthogonal reg
                 for run in range(NUM_RUNS_PER):
                     train_ssl_vqvae(
@@ -109,9 +109,9 @@ def run_experiments():
                         wandb_project_name=project_name_stage1,
                         torch_seed=0,
                     )
-
+                """
                 # With SSL and orthogonal reg
-                c["VQVAE"]["orthogonal_reg_weight"] = 5.0
+                c["VQVAE"]["orthogonal_reg_weight"] = 10.0
                 c["VQVAE"]["recon_augmented_view_scale"] = 0.1
                 c["VQVAE"]["recon_original_view_scale"] = 0.9
 
@@ -134,6 +134,7 @@ def run_experiments():
             c["SSL"]["stage1_method"] = method_1
             c["SSL"]["stage1_weight"] = SSL_WEIGHTS[method_1]
 
+            """
             c["VQVAE"]["orthogonal_reg_weight"] = 5.0
             c["VQVAE"]["recon_augmented_view_scale"] = 0.0
             c["VQVAE"]["recon_original_view_scale"] = 1.0
@@ -152,6 +153,7 @@ def run_experiments():
                         wandb_project_name=project_name_stage2,
                         torch_seed=0,
                     )
+            """
 
             c["VQVAE"]["orthogonal_reg_weight"] = 5.0
             c["VQVAE"]["recon_augmented_view_scale"] = 0.1
