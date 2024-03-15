@@ -244,11 +244,19 @@ class MaskGIT(nn.Module):
         guidance_scale: float,
         gamma: Callable,
         device,
+        stats: bool = False,
     ):
+
+        probs_array = []
+        s_array = []
+        entropy_array = []
+        selected_entropy_array = []
+
         for t in range(self.T):
             logits = self.transformer(
                 s, class_condition=class_condition
             )  # (b n codebook_size) == (b n K)
+
             if isinstance(class_condition, torch.Tensor):
                 logits_null = self.transformer(s, class_condition=None)
                 logits = logits_null + guidance_scale * (logits - logits_null)
@@ -268,6 +276,10 @@ class MaskGIT(nn.Module):
             mask_ratio = gamma(ratio)
 
             probs = F.softmax(logits, dim=-1)  # convert logits into probs; (b n K)
+
+            # if examine:
+            #    probs_array.append(probs)
+
             selected_probs = torch.gather(
                 probs, dim=-1, index=sampled_ids.unsqueeze(-1)
             ).squeeze()  # get probability for the selected tokens; p(\hat{s}(t) | \hat{s}_M(t)); (b n)
@@ -295,6 +307,33 @@ class MaskGIT(nn.Module):
             # Masks tokens with lower confidence.
             s = torch.where(masking, self.mask_token_ids, sampled_ids)  # (b n)
 
+            if stats:
+                s_array.append(s)
+                probs_array.append(selected_probs)
+
+                # Filter out `inf` and `nan` values before entropy calculation
+                finite_probs = probs[torch.isfinite(probs)].view(
+                    probs.size(0), probs.size(1), -1
+                )  # Reshape back to original after filtering
+                finite_selected_probs = selected_probs[torch.isfinite(selected_probs)]
+
+                # Add a larger epsilon to avoid log(0)
+                epsilon = 1e-5
+
+                # Calculate entropy for finite probabilities only
+                entropy = -torch.sum(
+                    finite_probs * torch.log(finite_probs + epsilon), dim=-1
+                )
+                selected_entropy = -torch.sum(
+                    finite_selected_probs * torch.log(finite_selected_probs + epsilon),
+                    dim=-1,
+                )
+
+                entropy_array.append(entropy)
+                selected_entropy_array.append(selected_entropy)
+
+        if stats:
+            return s_array, probs_array, entropy_array, selected_entropy_array
         return s
 
     @torch.no_grad()
@@ -305,6 +344,7 @@ class MaskGIT(nn.Module):
         class_index=None,
         device="cpu",
         guidance_scale: float = 1.0,
+        stats: bool = False,
     ):
         """
         It performs the iterative decoding and samples token indices.
@@ -326,6 +366,18 @@ class MaskGIT(nn.Module):
             else None
         )  # (b 1)
 
+        if stats:
+            s_array, probs, entropy, sel_entropy = self.sample_good(
+                s,
+                unknown_number_in_the_beginning,
+                class_condition,
+                guidance_scale,
+                gamma,
+                device,
+                stats=True,
+            )
+            return (s_array, probs, entropy, sel_entropy)
+
         s = self.sample_good(
             s,
             unknown_number_in_the_beginning,
@@ -334,7 +386,6 @@ class MaskGIT(nn.Module):
             gamma,
             device,
         )
-
         return s
 
     def decode_token_ind_to_timeseries(

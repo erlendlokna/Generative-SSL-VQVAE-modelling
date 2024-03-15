@@ -70,7 +70,7 @@ class BYOLMaskGIT(nn.Module):
         self.T = T
         self.config = config
         self.n_classes = n_classes
-
+        print("moving_average_decay:", moving_average_decay)
         self.mask_token_ids = config["VQVAE"]["codebook"]["size"]
         self.gamma = self.gamma_func("cosine")
         dataset_name = config["dataset"]["dataset_name"]

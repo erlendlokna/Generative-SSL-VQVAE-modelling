@@ -36,6 +36,10 @@ class Exp_VQVAE(ExpBase):
         probe_train_dl=None,
         probe_test_dl=None,
     ):
+        assert (
+            config["SSL"]["stage1_method"] == ""
+        ), "stage1 ssl method needs to be empty"
+
         super().__init__()
         self.probe_train_dl = probe_train_dl
         self.probe_test_dl = probe_test_dl

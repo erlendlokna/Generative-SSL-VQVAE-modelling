@@ -11,11 +11,7 @@ from experiments.exp_vqvae import Exp_VQVAE
 
 from preprocessing.preprocess_ucr import UCRDatasetImporter
 from preprocessing.data_pipeline import build_data_pipeline
-from utils import (
-    load_yaml_param_settings,
-    save_model,
-    get_root_dir,
-)
+from utils import load_yaml_param_settings, save_model, get_root_dir, model_filename
 import torch
 
 torch.set_float32_matmul_precision("medium")
@@ -105,9 +101,9 @@ def train_vqvae(
     print("saving models...")
     save_model(
         {
-            "encoder": train_exp.encoder,
-            "decoder": train_exp.decoder,
-            "vqmodel": train_exp.vq_model,
+            model_filename(config, "encoder"): train_exp.encoder,
+            model_filename(config, "decoder"): train_exp.decoder,
+            model_filename(config, "vqmodel"): train_exp.vq_model,
         },
         id=config["dataset"]["dataset_name"],
     )
