@@ -277,9 +277,6 @@ class MaskGIT(nn.Module):
 
             probs = F.softmax(logits, dim=-1)  # convert logits into probs; (b n K)
 
-            # if examine:
-            #    probs_array.append(probs)
-
             selected_probs = torch.gather(
                 probs, dim=-1, index=sampled_ids.unsqueeze(-1)
             ).squeeze()  # get probability for the selected tokens; p(\hat{s}(t) | \hat{s}_M(t)); (b n)
@@ -317,7 +314,7 @@ class MaskGIT(nn.Module):
                 )  # Reshape back to original after filtering
                 finite_selected_probs = selected_probs[torch.isfinite(selected_probs)]
 
-                # Add a larger epsilon to avoid log(0)
+                # avoid log 0
                 epsilon = 1e-5
 
                 # Calculate entropy for finite probabilities only
