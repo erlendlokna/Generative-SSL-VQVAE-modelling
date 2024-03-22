@@ -7,6 +7,7 @@ import os
 import copy
 import tempfile
 from pathlib import Path
+from tqdm import tqdm
 
 import torch
 import torch.nn.functional as F
@@ -15,6 +16,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
+from scipy.stats import kurtosis, skew
+from scipy.special import entr
 
 from models.stage2.maskgit import MaskGIT
 from models.stage2.mage import MAGE
@@ -25,6 +28,8 @@ from supervised_FCN.example_pretrained_model_loading import load_pretrained_FCN
 from supervised_FCN.example_compute_FID import calculate_fid
 from supervised_FCN.example_compute_IS import calculate_inception_score
 from utils import time_to_timefreq, timefreq_to_time, model_filename
+import seaborn as sns
+import pandas as pd
 
 
 class Evaluation(object):
@@ -101,50 +106,6 @@ class Evaluation(object):
         elif kind == "conditional":
             x_new = conditional_sample(
                 maskgit, n_samples, self.device, class_index, self.batch_size
-            )  # (b c l); b=n_samples, c=1 (univariate)
-        else:
-            raise ValueError
-
-        return x_new
-
-    def sampleBYOLMaskGit(
-        self,
-        n_samples: int,
-        input_length: int,
-        n_classes: int,
-        kind: str,
-        class_index: int = -1,
-    ):
-        assert kind in ["unconditional", "conditional"]
-
-        # build
-        byol_maskgit = BYOLMaskGIT(
-            input_length,
-            **self.config["MaskGIT"],
-            config=self.config,
-            n_classes=n_classes,
-        ).to(self.device)
-
-        # load
-        fname = f"{model_filename(self.config, 'byolmaskgit')}-{self.subset_dataset_name}.ckpt"
-        try:
-            ckpt_fname = os.path.join("saved_models", fname)
-            byol_maskgit.load_state_dict(torch.load(ckpt_fname), strict=False)
-        except FileNotFoundError:
-            ckpt_fname = Path(tempfile.gettempdir()).joinpath(fname)
-            byol_maskgit.load_state_dict(torch.load(ckpt_fname), strict=False)
-
-        # inference mode
-        byol_maskgit.eval()
-
-        # sampling
-        if kind == "unconditional":
-            x_new = unconditional_sample(
-                byol_maskgit, n_samples, self.device, batch_size=self.batch_size
-            )  # (b c l); b=n_samples, c=1 (univariate)
-        elif kind == "conditional":
-            x_new = conditional_sample(
-                byol_maskgit, n_samples, self.device, class_index, self.batch_size
             )  # (b c l); b=n_samples, c=1 (univariate)
         else:
             raise ValueError
@@ -319,4 +280,354 @@ class Evaluation(object):
         # plt.legend()
         plt.tight_layout()
         wandb.log({"TSNE-latent_space": wandb.Image(plt)})
+        plt.close()
+
+    def aggregate_statistics(self, model, num_iterations=100):
+        results = []
+
+        for _ in tqdm(range(num_iterations)):
+            sample, probs_array, entropy_array, sel_entropy_array = (
+                model.iterative_decoding(stats=True)
+            )
+            results.append(
+                (sample[-1].squeeze(), probs_array, entropy_array, sel_entropy_array)
+            )
+
+        # Aggregate results across iterations-
+        aggregated_probs = torch.stack(
+            [torch.stack(probs) for _, probs, _, _ in results]
+        )
+        aggregated_entropy = torch.stack(
+            [torch.stack(entropy) for _, _, entropy, _ in results]
+        )
+        aggregated_sel_entropy = torch.stack(
+            [torch.stack(sel_entropy) for _, _, _, sel_entropy in results]
+        )
+
+        aggregated_samples = torch.stack([sample for sample, _, _, _ in results])
+
+        # broadcasting: (num_iterations, t, 1, num tokens) -> (num_iterations, t, num_tokens)
+        aggregated_probs = torch.squeeze(aggregated_probs, dim=2)
+        aggregated_entropy = torch.squeeze(aggregated_entropy, dim=2)
+        # aggregated_samples = torch.squeeze(aggregated_samples, dim=2)
+        # aggregated_sel_entropy = torch.squeeze(aggregated_sel_entropy, dim=2)
+        return (
+            aggregated_samples,
+            aggregated_probs,
+            aggregated_entropy,
+            aggregated_sel_entropy,
+        )
+
+    def log_conditional_probability_vs_t(self, agg_probs):
+        a, b, c = agg_probs.shape
+        flat_agg_probs = agg_probs.permute(1, 0, 2).reshape(b, a * c)
+
+        # Calculate the means and standard deviations along the second axis
+        means = []
+        stds = []
+
+        for i in range(flat_agg_probs.shape[0]):
+            probs = flat_agg_probs[i]
+
+            means.append(torch.mean(probs[torch.isfinite(probs)]))
+            stds.append(torch.std(probs[torch.isfinite(probs)]))
+
+        # Create an array for the "t" values
+        t_values = np.arange(1, len(means) + 1)
+
+        # Plot the means and standard deviations
+        f, ax = plt.subplots()
+        ax.errorbar(
+            t_values,
+            means,
+            yerr=stds,
+            fmt="o",
+            color="dodgerblue",
+            alpha=0.8,
+            label="mean conditional probability",
+        )
+
+        means = torch.stack(means)
+        stds = torch.stack(stds)
+
+        ax.set_title("conditional probability")
+        ax.set_xlabel("t")
+        ax.set_ylabel("p")
+        ax.grid(alpha=0.3)
+        wandb.log({"uncond_p_vs_t": wandb.Image(f)})
+        plt.close()
+
+        return means, stds
+
+    def log_entropy_vs_t(self, agg_entropy):
+        a, b, c = agg_entropy.shape
+        flat_agg_entropy = agg_entropy.permute(1, 0, 2).reshape(b, a * c)
+
+        # Calculate the means and standard deviations along the second axis
+        means = []
+        stds = []
+
+        for i in range(flat_agg_entropy.shape[0]):
+            entropies = flat_agg_entropy[i]
+
+            means.append(torch.mean(entropies))
+            stds.append(torch.std(entropies))
+
+        # Create an array for the "t" values
+        t_values = np.arange(1, len(means) + 1)
+
+        # Plot the means and standard deviations
+        f, ax = plt.subplots()
+        ax.errorbar(
+            t_values,
+            means,
+            yerr=stds,
+            fmt="o",
+            color="dodgerblue",
+            alpha=0.8,
+            label="mean entropy",
+        )
+
+        ax.legend()
+        ax.set_title("Mean and Std of entropies vs t")
+        ax.set_xlabel("t")
+        ax.set_ylabel("entropy")
+        ax.grid(alpha=0.3)
+        wandb.log({"entropy_vs_t": wandb.Image(f)})
+        plt.close()
+
+        means = torch.stack(means)
+        stds = torch.stack(stds)
+
+        # Return the figure and axes
+        return means, stds
+
+    def log_selected_entropy_vs_t(self, agg_sel_entropy):
+        means = torch.mean(agg_sel_entropy.T, dim=1)
+        stds = torch.std(agg_sel_entropy.T, dim=1)
+
+        t_values = np.arange(1, len(means) + 1)
+        f, ax = plt.subplots()
+        ax.errorbar(
+            t_values,
+            means,
+            yerr=stds,
+            fmt="o",
+            color="dodgerblue",
+            alpha=0.8,
+            label="mean entropy",
+        )
+        ax.set_title("Entropy of selected tokens vs t")
+        ax.set_xlabel("t")
+        ax.set_ylabel("entropy")
+        ax.grid(alpha=0.3)
+        wandb.log({"sel_entropy_vs_t": wandb.Image(f)})
+        plt.close()
+        return means, stds
+
+    def log_probability_histograms(self, agg_probs):
+        num_tokens = agg_probs.shape[1]
+
+        f, axs = plt.subplots(num_tokens, 1, figsize=(5, 15))
+        for i in range(num_tokens):
+            # Filter out infinite and NaN values
+            probs = agg_probs[:, i].flatten().cpu().numpy()
+            finite_probs = probs[np.isfinite(probs) & ~np.isnan(probs)]
+
+            axs[i].hist(finite_probs, bins=100, alpha=0.5)
+            axs[i].set_title(f"t =  {i+1}")
+            axs[i].set_xlabel("Selected Probabilities")
+            axs[i].set_ylabel("Frequency")
+            axs[i].set_xlim([0, 1])
+            # axs[i].set_ylim([0, 400])
+
+        plt.tight_layout()
+        wandb.log({"probability_histograms": wandb.Image(f)})
+        plt.close()
+
+    def log_iterative_decoding_statistics(
+        self, agg_sel_probs, agg_entropy, agg_sel_entropy
+    ):
+        self.log_probability_histograms(agg_sel_probs)
+
+        mean_p_t, std_p_t = self.log_conditional_probability_vs_t(agg_sel_probs)
+
+        mean_e_t, std_e_t = self.log_entropy_vs_t(agg_entropy)
+
+        mean_sel_e_t, std_sel_e_t = self.log_selected_entropy_vs_t(agg_sel_entropy)
+
+        data = np.array(
+            [mean_p_t, std_p_t, mean_e_t, std_e_t, mean_sel_e_t, std_sel_e_t]
+        ).T.tolist()
+
+        iterative_decoding = wandb.Table(
+            data=data,
+            columns=[
+                "p_cond_mean",
+                "p_cond_std",
+                "e_mean",
+                "e_std",
+                "sel_e_mean",
+                "sel_e_std",
+            ],
+        )
+
+        wandb.log({"iterative_decoding": iterative_decoding})
+
+    def gini_coefficient(self, array):
+        array = array.flatten()
+        if torch.any(array < 0):
+            array = array[array > 0]
+        array += 0.0000001  # Avoid division by zero
+        array = torch.sort(array)[0]
+        index = torch.arange(1, array.shape[0] + 1)
+        n = array.shape[0]
+        return (
+            (torch.sum((2 * index - n - 1) * array)) / (n * torch.sum(array))
+        ).item()
+
+    def log_coverage_and_variety(self, aggregated_samples, vocabulary_size=32):
+        num_samples, sequence_length = aggregated_samples.size()
+
+        # Coverage Score
+        coverage_scores = torch.tensor(
+            [
+                len(torch.unique(aggregated_samples[i])) / vocabulary_size
+                for i in range(num_samples)
+            ]
+        )
+        coverage_score = torch.mean(coverage_scores)
+        coverage_std = torch.std(coverage_scores)
+
+        # Variety Score via Gini Coefficient
+        token_counts = torch.bincount(aggregated_samples.view(-1))
+        variety_score = self.gini_coefficient(token_counts.float())
+
+        # Entropy
+        probabilities = token_counts.float() / token_counts.sum()
+        entropy = torch.sum(entr(probabilities))
+
+        # Kurtosis and Skewness
+        kurt = kurtosis(token_counts.float())
+        skewness = skew(token_counts.float())
+
+        wandb.log(
+            {
+                "coverage": coverage_score.item(),
+                "coverage_std": coverage_std.item(),
+                "variety (Gini)": variety_score,
+                "entropy": entropy.item(),
+                "kurtosis": kurt,
+                "skewness": skewness,
+            }
+        )
+
+    def log_prior_token_ratios(self, token_probs):
+
+        token_indices = np.arange(len(token_probs))  # Token indices for the x-axis
+
+        plt.figure(figsize=(10, 5))
+        sns.barplot(x=token_indices, y=token_probs.numpy(), color="dodgerblue")
+
+        plt.title("Token Sampling Ratio")
+        plt.xlabel("Token Index")
+        plt.ylabel("Ratio")
+        plt.xlim(-1, len(token_probs))
+        plt.grid(alpha=0.3)
+        wandb.log({"prior_token_ratios": wandb.Image(plt)})
+        plt.close()
+
+        return token_probs
+
+    def co_occurence_matrix(self, samples, num_tokens):
+
+        co_occurrence = torch.zeros((num_tokens, num_tokens))
+
+        for sequence in samples:
+            sequence = sequence.float()
+            # Count the occurrence of each token in the sequence
+            token_counts = torch.histc(
+                sequence, bins=num_tokens, min=0, max=num_tokens - 1
+            )
+            # Update the co-occurrence matrix
+            co_occurrence += torch.outer(token_counts, token_counts)
+
+        # Divide by 2 to correct for double counting
+        co_occurrence /= 2
+
+        return co_occurrence
+
+    def calculate_probabilities(self, co_occurence):
+
+        total_sum = torch.sum(co_occurence)
+
+        token_prob = torch.sum(co_occurence, dim=0) / total_sum
+
+        joint_prob = co_occurence / total_sum
+
+        conditional_prob = joint_prob / token_prob[None, :]
+
+        return token_prob, joint_prob, conditional_prob
+
+    def log_conditional_probs(self, conditional_prob):
+        sns.heatmap(conditional_prob)
+        plt.title("Conditional Probability of Tokens")
+        wandb.log({"conditional_prob": wandb.Image(plt)})
+        plt.close()
+
+    def calculate_pmi(self, token_prob, joint_prob):
+        # Following formula: PMI = log2(P(x,y) / (P(x) * P(y)))
+
+        eps = 1e-10
+
+        token_prob = token_prob / token_prob.sum()
+        joint_prob = joint_prob / joint_prob.sum()
+
+        # Make sure the denominator is non-zero
+        denominator = torch.outer(token_prob, token_prob)  # P(x) * P(y)
+        denominator = torch.clamp(denominator, min=eps)  # Ensure it's non-zero.
+
+        mutual_info = joint_prob / denominator  # P(x,y) / (P(x) * P(y))
+        mutual_info = torch.clamp(
+            mutual_info, min=eps
+        )  # Ensure it's non-zero before taking log
+        mutual_info = torch.log2(mutual_info)  # log2(P(x,y) / (P(x) * P(y)))
+
+        mutual_info = torch.clamp(
+            mutual_info, min=0.0
+        )  # Not interested in negative values
+
+        return mutual_info
+
+    def log_pmi(self, pmi):
+        # Plot the PMI matrix without diag
+        pmi_no_diag = pmi.fill_diagonal_(0)
+        sns.heatmap(pmi)
+        plt.title("Off Diagonal Pointwise Mutual Information of Tokens")
+        wandb.log({"pmi": wandb.Image(plt)})
+        plt.close()
+
+        pmi_no_diag = pmi_no_diag.flatten()
+        pmi_no_diag = pmi_no_diag[pmi_no_diag > 0]
+
+    def log_pmi_vs_usage(self, pmi, token_prob):
+        tpmi = pmi.sum(axis=0)
+
+        sorted_indicies = torch.argsort(token_prob)
+
+        most_sampled = token_prob[sorted_indicies]
+        corr_tpmi = tpmi[sorted_indicies]
+
+        df = pd.DataFrame(
+            {"Sample Usage Ratio": most_sampled, "Total Mutual Information": corr_tpmi}
+        )
+
+        sns.jointplot(
+            data=df,
+            x="Sample Usage Ratio",
+            y="Total Mutual Information",
+            label="tokens",
+        )
+
+        wandb.log({"pmi_vs_usage": wandb.Image(plt)})
         plt.close()

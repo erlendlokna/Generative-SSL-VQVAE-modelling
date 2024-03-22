@@ -11,6 +11,7 @@ from pytorch_lightning.loggers import WandbLogger
 from preprocessing.preprocess_ucr import UCRDatasetImporter
 from experiments.exp_maskgit import ExpMaskGIT
 from evaluation.model_eval import Evaluation
+import matplotlib.pyplot as plt
 
 # from evaluation.evaluation import Evaluation
 from utils import (
@@ -94,6 +95,7 @@ def train_maskgit(
     )
 
     print("evaluating...")
+    print("FID, IS, PCA, TSNE")
     dataset_name = config["dataset"]["dataset_name"]
     input_length = train_data_loader.dataset.X.shape[-1]
     n_classes = len(np.unique(train_data_loader.dataset.Y))
@@ -103,7 +105,6 @@ def train_maskgit(
         config=config,
         batch_size=config["dataset"]["batch_sizes"]["stage2"],
     )
-
     x_gen = evaluation.sampleMaskGit(
         max(
             evaluation.X_test.shape[0],
@@ -122,6 +123,36 @@ def train_maskgit(
     evaluation.log_visual_inspection(min(200, evaluation.X_test.shape[0]), x_gen)
     evaluation.log_pca(min(1000, evaluation.X_test.shape[0]), x_gen, z_test, z_gen)
     evaluation.log_tsne(min(1000, evaluation.X_test.shape[0]), x_gen, z_test, z_gen)
+
+    print("Aggregating iterative decodings")
+    agg_samples, agg_sel_probs, agg_entropy, agg_sel_entropy = (
+        evaluation.aggregate_statistics(train_exp.maskgit, num_iterations=100)
+    )
+
+    evaluation.log_iterative_decoding_statistics(
+        agg_sel_probs, agg_entropy, agg_sel_entropy
+    )
+
+    # vocabulary and variety
+    num_tokens_idx = train_exp.maskgit.mask_token_ids
+    evaluation.log_coverage_and_variety(agg_samples, num_tokens_idx)
+
+    co_occurence = evaluation.co_occurence_matrix(agg_samples, num_tokens_idx)
+
+    # Calculate probabilities
+    token_prob, joint_prob, conditional_prob = evaluation.calculate_probabilities(
+        co_occurence
+    )
+
+    evaluation.log_prior_token_ratios(token_prob)
+
+    evaluation.log_conditional_probs(conditional_prob)
+
+    pmi = evaluation.calculate_pmi(token_prob, joint_prob)
+
+    evaluation.log_pmi(pmi)
+
+    evaluation.log_pmi_vs_usage(pmi, token_prob)
 
     wandb.finish()
 

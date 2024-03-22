@@ -150,8 +150,8 @@ class AugUCRDataset(Dataset):
 
         x_augmented = self.augmenter.augment(x).numpy()
 
-        x = x.reshape(1, -1)  # (1 x F)
-        x_augmented = x_augmented.reshape(1, -1)
+        x = x.copy().reshape(1, -1)  # (1 x F)
+        x_augmented = x_augmented.copy().reshape(1, -1)
 
         x, x_augmented = self._assign_float32(x, x_augmented)
 

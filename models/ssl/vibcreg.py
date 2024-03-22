@@ -233,13 +233,11 @@ def compute_cov_loss(z: Tensor):
 
 
 class VIbCReg(nn.Module):
-    def __init__(self, proj_in, config: dict, pooling_type: bool, **kwargs):
+    def __init__(self, proj_in, config: dict, **kwargs):
         super().__init__()
         self.name = "vibcreg"
 
         self.vibcreg_config = config["SSL"]["vibcreg"]
-
-        self.pooling_type = pooling_type
 
         self.projector = Projector(
             proj_in,
@@ -250,11 +248,10 @@ class VIbCReg(nn.Module):
         self.proj_in = proj_in
 
     def forward(self, z: Tensor):
-        if self.pooling_type == "regular":
-            z = self.pooling(z)
-        elif self.pooling_type == "adaptive":
-            z = self.adaptive_pooling(z)
-        return self.projector(z)
+
+        z_pooled = self.pooling(z)
+
+        return self.projector(z_pooled)
 
     def loss_function(self, z1_projected: Tensor, z2_projected: Tensor):
         loss_params = self.vibcreg_config
@@ -268,24 +265,7 @@ class VIbCReg(nn.Module):
             + loss_params["mu"] * var_loss
             + loss_params["nu"] * cov_loss
         )
-        return loss
-
-    def adaptive_pooling(self, z):
-        # Pools adaptively to a dimension suitable for the projector input dimension.
-        # May only work for 3D tensors. So during prior learning.
-        proj_in = self.proj_in
-
-        z_avg_pooled = F.adaptive_avg_pool2d(
-            z, (1, proj_in // 2)
-        )  # (B, C, H) --> (B, 1, dim/2=H)
-        z_max_pooled = F.adaptive_max_pool2d(
-            z, (1, proj_in // 2)
-        )  # (B, C, H) --> (B, 1, dim/2=H)
-        z_global = torch.cat(
-            (z_avg_pooled.squeeze(1), z_max_pooled.squeeze(1)), dim=1
-        )  # (B, 2H=dim)
-
-        return z_global
+        return loss * loss_params["weight"]
 
     def pooling(self, z):
         if len(z.size()) == 3:

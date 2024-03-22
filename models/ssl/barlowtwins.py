@@ -35,28 +35,23 @@ class Projector(nn.Module):
 
 
 class BarlowTwins(nn.Module):
-    def __init__(self, proj_in, config: dict, pooling_type: bool, **kwargs):
+    def __init__(self, proj_in, config: dict, **kwargs):
         super().__init__()
-        barlowtwins_config = config["SSL"]["barlowtwins"]
-        self.pooling = pooling_type
+        self.loss_params = config["SSL"]["barlowtwins"]
         self.proj_in = proj_in
         self.projector = Projector(
             proj_in=proj_in,
-            proj_hid=barlowtwins_config["proj_hid"],
-            proj_out=barlowtwins_config["proj_out"],
+            proj_hid=self.loss_params["proj_hid"],
+            proj_out=self.loss_params["proj_out"],
         )
         self.name = "barlowtwins"
-        self.lambda_ = barlowtwins_config["lambda"]
 
     def forward(self, z):
-        if self.pooling_type == "adaptive":
-            z = self.adaptive_pooling(z)
-        elif self.pooling_type == "regular":
-            z = self.pooling(z)
-
-        return self.projector(z)
+        return self.projector(self.pooling(z))
 
     def loss_function(self, z1_projected, z2_projected):
+        loss_params = self.loss_params
+
         # normalize the projections based on batch dimension
         z1_projected_norm = batch_dim_wise_normalize(z1_projected)
         z2_projected_norm = batch_dim_wise_normalize(z2_projected)
@@ -71,7 +66,9 @@ class BarlowTwins(nn.Module):
             D, device=z1_projected_norm.device
         )  # Specify the device here
         C_diff = (identity_mat - C) ** 2
-        off_diagonal_mul = (self.lambda_ * torch.abs(identity_mat - 1)) + identity_mat
+        off_diagonal_mul = (
+            loss_params["lambda"] * torch.abs(identity_mat - 1)
+        ) + identity_mat
         loss = (C_diff * off_diagonal_mul).sum()
 
         D = z1_projected_norm.shape[1]
@@ -81,24 +78,7 @@ class BarlowTwins(nn.Module):
 
         # scaling based on dimensionality of projector:
         loss_scaled = loss / D
-        return loss_scaled
-
-    def adaptive_pooling(self, z):
-        # Pools adaptively to a dimension suitable for the projector input dimension.
-        # May only work for 3D tensors. So during prior learning.
-        proj_in = self.proj_in
-
-        z_avg_pooled = F.adaptive_avg_pool2d(
-            z, (1, proj_in // 2)
-        )  # (B, C, H) --> (B, 1, dim/2=H)
-        z_max_pooled = F.adaptive_max_pool2d(
-            z, (1, proj_in // 2)
-        )  # (B, C, H) --> (B, 1, dim/2=H)
-        z_global = torch.cat(
-            (z_avg_pooled.squeeze(1), z_max_pooled.squeeze(1)), dim=1
-        )  # (B, 2H=dim)
-
-        return z_global
+        return loss_scaled * loss_params["weight"]
 
     def pooling(self, z):
         if len(z.size()) == 3:
@@ -107,8 +87,8 @@ class BarlowTwins(nn.Module):
         z_avg_pooled = F.adaptive_avg_pool2d(z, (1, 1))  # (B, C, 1, 1)
         z_max_pooled = F.adaptive_max_pool2d(z, (1, 1))
 
-        z_avg_pooled.squeeze(-1).squeeze(-1)
-        z_max_pooled.squeeze(-1).squeeze(-1)
+        z_avg_pooled = z_avg_pooled.squeeze(-1).squeeze(-1)  # (B, C)
+        z_max_pooled = z_max_pooled.squeeze(-1).squeeze(-1)
 
         z_global = torch.cat((z_avg_pooled, z_max_pooled), dim=1)  # (B, 2C)
         return z_global

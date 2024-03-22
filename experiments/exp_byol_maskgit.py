@@ -36,8 +36,6 @@ class ExpBYOLMaskGIT(ExpBase):
             pooling_type="regular",
         )
 
-        self.ssl_weight = config["SSL"]["stage2_weight"]
-
         # Done manually in training_step
         self.automatic_optimization = False
 
@@ -88,8 +86,6 @@ class ExpBYOLMaskGIT(ExpBase):
         opt.zero_grad()
 
         prior_loss, ssl_loss = self.forward(batch, batch_idx)
-
-        ssl_loss *= self.ssl_weight
 
         loss = prior_loss + ssl_loss
 

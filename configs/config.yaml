@@ -17,7 +17,7 @@ trainer_params:
     - 0
   max_epochs:
     stage1: 1 #000
-    stage2: 200 #1000 #1000 #10000
+    stage2: 1 #1000 #1000 #10000
 
 encoder:
   dim: 64
@@ -86,18 +86,18 @@ class_guidance:
 
 SSL:
   stage1_method: "" #"vibcreg" # "barlowtwins", "vicreg", "vibcreg" or empty
-  stage1_weight: 0.01 # VibCReg: 0.1, BarlowTwins: 1, VICReg: 0.1
   stage2_method: "" #"barlowtwins" "vicreg", "vibcreg"
-  stage2_weight: 0.1
 
   # Hyperparameters for SSL methods.
   # These are the default values from the paper on CV-methods on Time series. Ref: Lee et al.
   barlowtwins:
+    weight: 1.0
     proj_hid: 4096 #projector hidden layer size
     proj_out: 4096 #projector output layer size
     lambda: 0.005
 
   vicreg:
+    weight: 0.01
     proj_hid: 4096 #projector hidden layer size
     proj_out: 4096 #projector output layer size
     lambda: 25 # sim_loss
@@ -105,6 +105,7 @@ SSL:
     nu: 1 # cov_loss
 
   vibcreg:
+    weight: 0.01
     proj_hid: 4096 #projector hidden layer size
     proj_out: 4096 #projector output layer size
     lambda: 25 # sim_loss
@@ -116,10 +117,12 @@ augmentations:
 
   time_augs:
     #- "noise"
-    - "amplitude_resize"
-    - "slope"
+    # - "amplitude_resize"
+    # - "slope"
     #- 'flip'
-    # - "noise_window"
+    - "noise_window"
+    - "window_warp"
+    - "magnitude_warp"
   timefreq_augs:
     #- "random_masks"
     #- "block"
@@ -132,9 +135,14 @@ augmentations:
 
   aug_params:
     n_fft: 32
+    window_ratio: 0.4
+    min_window_warp: 0.8
+    max_window_warp: 1.2
+    min_magnitude_warp: 0.8
+    max_magnitude_warp: 1.2
+
     #Time
     noise_std: 0.01
-    noise_window_scale: 0.4
     AmpR_rate: 0.2
     slope_rate: 0.005
     #TimeFreq

@@ -44,8 +44,6 @@ class ExpMAGE(ExpBase):
             config["SSL"]["stage2_method"],
             pooling_type=None,
         )
-        self.SSL_weight = config["SSL"]["stage2_weight"]
-
         # For probes #
         self.train_data_loader = train_data_loader
         self.test_data_loader = test_data_loader
@@ -104,8 +102,6 @@ class ExpMAGE(ExpBase):
 
     def training_step(self, batch, batch_idx):
         prior_loss1, prior_loss2, ssl_loss = self.forward(batch, batch_idx)
-
-        ssl_loss *= self.SSL_weight
 
         prior_loss = 0.5 * (prior_loss1 + prior_loss2)
         loss = prior_loss + ssl_loss

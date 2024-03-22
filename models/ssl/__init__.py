@@ -12,7 +12,7 @@ from models.ssl.barlowtwins import BarlowTwins
 from models.ssl.vibcreg import VIbCReg
 
 
-def assign_ssl_method(proj_in, config, ssl_name, pooling_type="regular"):
+def assign_ssl_method(proj_in, config, ssl_name):
     method_mapping = {
         "barlowtwins": BarlowTwins,
         "vicreg": VICReg,
@@ -23,4 +23,4 @@ def assign_ssl_method(proj_in, config, ssl_name, pooling_type="regular"):
         ssl_name in method_mapping
     ), f"SSL method {ssl_name} not in choices {list(method_mapping.keys())}"
 
-    return method_mapping[ssl_name](proj_in, config, pooling_type=pooling_type)
+    return method_mapping[ssl_name](proj_in, config)

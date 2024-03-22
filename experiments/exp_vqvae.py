@@ -22,7 +22,7 @@ import torch.nn.functional as F
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
 import wandb
-from evaluation.downstream_eval import probes
+from evaluation.downstream_eval import DownstreamEval
 
 from sklearn.manifold import TSNE
 
@@ -33,18 +33,24 @@ class Exp_VQVAE(ExpBase):
         input_length,
         config: dict,
         n_train_samples: int,
-        probe_train_dl=None,
-        probe_test_dl=None,
+        train_data_loader=None,
+        test_data_loader=None,
     ):
         assert (
             config["SSL"]["stage1_method"] == ""
         ), "stage1 ssl method needs to be empty"
 
         super().__init__()
-        self.probe_train_dl = probe_train_dl
-        self.probe_test_dl = probe_test_dl
+
         self.probe_test_per = config["VQVAE"]["probe_test_per"]
         self.last_epoch = config["trainer_params"]["max_epochs"]["stage1"]
+
+        self.downstream_eval = DownstreamEval(
+            train_data_loader,
+            test_data_loader,
+            num_tokens=config["VQVAE"]["codebook"]["size"],
+            n_fft=config["VQVAE"]["n_fft"],
+        )
 
         self.config = config
         self.T_max = config["trainer_params"]["max_epochs"]["stage1"] * (
@@ -93,7 +99,11 @@ class Exp_VQVAE(ExpBase):
     def forward(self, batch):
         x, y = batch
 
-        recons_loss = {"time": 0.0, "timefreq": 0.0, "perceptual": 0.0}
+        recons_loss = {
+            "orig.time": 0.0,
+            "orig.timefreq": 0.0,
+        }
+
         vq_loss = None
         perplexity = 0.0
 
@@ -113,8 +123,8 @@ class Exp_VQVAE(ExpBase):
         # Make sure x and xhat have the same length. Padding may occur in the ISTFT and STFT process
         x, xhat = shape_match(x, xhat)
 
-        recons_loss["time"] = F.mse_loss(x, xhat)
-        recons_loss["timefreq"] = F.mse_loss(u, uhat)
+        recons_loss["orig.time"] = F.mse_loss(x, xhat)
+        recons_loss["orig.timefreq"] = F.mse_loss(u, uhat)
         # perplexity = perplexity #Updated above during quantize
         # vq_losses['LF'] = vq_loss_l #Updated above during quantize
 
@@ -144,12 +154,7 @@ class Exp_VQVAE(ExpBase):
         x = batch
         recons_loss, vq_loss, perplexity = self.forward(x)
 
-        loss = (
-            recons_loss["time"]
-            + recons_loss["timefreq"]
-            + vq_loss["loss"]
-            + recons_loss["perceptual"]
-        )
+        loss = recons_loss["orig.time"] + recons_loss["orig.timefreq"] + vq_loss["loss"]
 
         # lr scheduler
         sch = self.lr_schedulers()
@@ -158,12 +163,14 @@ class Exp_VQVAE(ExpBase):
         # log
         loss_hist = {
             "loss": loss,
-            "recons_loss.time": recons_loss["time"],
-            "recons_loss.timefreq": recons_loss["timefreq"],
             "commit_loss": vq_loss["commit_loss"],
             #'commit_loss': vq_loss, #?
             "perplexity": perplexity,
-            "perceptual": recons_loss["perceptual"],
+            "recons_loss.time": recons_loss["orig.time"],
+            "recons_loss.timefreq": recons_loss["orig.timefreq"],
+            "recons_loss.orig": recons_loss["orig.time"] + recons_loss["orig.timefreq"],
+            "orthogonal_reg_loss": vq_loss["orthogonal_reg_loss"],
+            "vq_loss": vq_loss["loss"],
         }
 
         wandb.log(loss_hist)
@@ -175,53 +182,23 @@ class Exp_VQVAE(ExpBase):
         x = batch
         recons_loss, vq_loss, perplexity = self.forward(x)
 
-        loss = (
-            recons_loss["time"]
-            + recons_loss["timefreq"]
-            + vq_loss["loss"]
-            + recons_loss["perceptual"]
-        )
+        loss = recons_loss["orig.time"] + recons_loss["orig.timefreq"] + vq_loss["loss"]
 
         # log
         val_loss_hist = {
-            "validation_loss": loss,
-            "validation_recons_loss.time": recons_loss["time"],
-            "validation_recons_loss.timefreq": recons_loss["timefreq"],
-            "validation_commit_loss": vq_loss["commit_loss"],
-            #'validation_commit_loss': vq_loss, #?
-            "validation_perplexity": perplexity,
-            "validation_perceptual": recons_loss["perceptual"],
+            "val_loss": loss,
+            #'commit_loss': vq_loss, #?
+            "val_perplexity": perplexity,
+            "val_recons_loss.time": recons_loss["orig.time"],
+            "val_recons_loss.timefreq": recons_loss["orig.timefreq"],
+            "val_recons_loss.orig": recons_loss["orig.time"]
+            + recons_loss["orig.timefreq"],
         }
 
         detach_the_unnecessary(val_loss_hist)
         wandb.log(val_loss_hist)
 
         return val_loss_hist
-
-    def test_step(self, batch, batch_idx):
-        x = batch
-        recons_loss, vq_loss, perplexity = self.forward(x)
-
-        loss = (
-            recons_loss["time"]
-            + recons_loss["timefreq"]
-            + vq_loss["loss"]
-            + recons_loss["perceptual"]
-        )
-
-        # log
-        loss_hist = {
-            "loss": loss,
-            "recons_loss.time": recons_loss["time"],
-            "recons_loss.timefreq": recons_loss["timefreq"],
-            "commit_loss": vq_loss["commit_loss"],
-            #'commit_loss': vq_loss, #?
-            "perplexity": perplexity,
-            "perceptual": recons_loss["perceptual"],
-        }
-
-        detach_the_unnecessary(loss_hist)
-        return loss_hist
 
     def configure_optimizers(self):
         opt = torch.optim.AdamW(
@@ -244,119 +221,56 @@ class Exp_VQVAE(ExpBase):
 
         return {"optimizer": opt, "lr_scheduler": CosineAnnealingLR(opt, self.T_max)}
 
-    def downstream_step(self, tsne=False):
-        print("performing downstream tasks..")
-        n_fft = self.config["VQVAE"]["n_fft"]
-
-        Z_tr, y_tr, train_counts = encode_data(
-            dataloader=self.probe_train_dl,
-            encoder=self.encoder,
-            n_fft=n_fft,
-            vq_model=self.vq_model,
-            device=self.device,
-            avg_pooling=True,
-            num_tokens=self.config["VQVAE"]["codebook"]["size"],
-        )
-        Z_te, y_ts, val_counts = encode_data(
-            dataloader=self.probe_test_dl,
-            encoder=self.encoder,
-            n_fft=n_fft,
-            vq_model=self.vq_model,
-            device=self.device,
-            avg_pooling=True,
-            num_tokens=self.config["VQVAE"]["codebook"]["size"],
-        )
-
-        probe_results = probes(
-            Z_tr.view(Z_tr.shape[0], -1).cpu().numpy(),
-            Z_te.view(Z_te.shape[0], -1).cpu().numpy(),
-            y_tr.cpu().numpy(),
-            y_ts.cpu().numpy(),
-        )
-        wandb.log(probe_results)
-
-        # Codebook analysis
-        codebook = self.vq_model.codebook
-        corr = torch.corrcoef(codebook).to(self.device)  # correlation matrix
-        cos_sim = F.cosine_similarity(
-            codebook.unsqueeze(0), codebook.unsqueeze(1), dim=2
-        )  # cosine similarity matrix
-
-        mean_abs_corr_off_diagonal = torch.sum(
-            torch.abs(corr - torch.eye(corr.shape[0]).to(self.device))
-        ) / (corr.shape[0] * (corr.shape[0] - 1))
-
-        mean_abs_cos_sim_off_diagonal = torch.sum(
-            torch.abs(cos_sim - torch.eye(cos_sim.shape[0]).to(self.device))
-        ) / (cos_sim.shape[0] * (cos_sim.shape[0] - 1))
-
-        wandb.log({"mean_abs_corr_off_diagonal": mean_abs_corr_off_diagonal})
-        wandb.log({"mean_abs_cos_sim_off_diagonal": mean_abs_cos_sim_off_diagonal})
-
-        corr_viz = corr.cpu().numpy()
-        cos_sim_viz = cos_sim.cpu().numpy()
-        # Set the diagonal elements of corr_viz to np.nan for visualization
-        np.fill_diagonal(corr_viz, np.nan)
-        np.fill_diagonal(cos_sim_viz, np.nan)
-
-        im = plt.imshow(corr_viz)
-        plt.title(
-            f"Mean absolute off-diagonal correlation (@{self.current_epoch}): {np.round(mean_abs_corr_off_diagonal.cpu(), 4)}"
-        )
-
-        plt.colorbar(im)
-        wandb.log({"correlation_matrix": wandb.Image(plt)})
-        plt.close()
-
-        im = plt.imshow(cos_sim_viz)
-        plt.title(
-            f"Mean absolute off-diagonal cosine similarity (@{self.current_epoch}): {np.round(mean_abs_cos_sim_off_diagonal.cpu(), 4)}"
-        )
-        plt.colorbar(im)
-        wandb.log({"cosine_similarity_matrix": wandb.Image(plt)})
-        plt.close()
-
-        # Counts
-        plt.bar(range(32), train_counts.cpu().numpy())
-        plt.xlabel("tokens")
-        plt.ylabel("Count")
-        plt.title(f"frequency of token usage on test set (@{self.current_epoch})")
-        wandb.log({"train_token_usage": wandb.Image(plt)})
-        plt.close()
-
-        plt.bar(range(32), val_counts.cpu().numpy())
-        plt.xlabel("tokens")
-        plt.ylabel("Count")
-        plt.title(f"frequency of token usage on val set (@{self.current_epoch})")
-        wandb.log({"val_token_usage": wandb.Image(plt)})
-        plt.close()
-
-        if tsne:
-            # TSNE
-            tsne = TSNE(n_components=2, random_state=0)
-            Z_tr_tsne = tsne.fit_transform(Z_tr.cpu().numpy())
-            Z_te_tsne = tsne.fit_transform(Z_te.cpu().numpy())
-
-            plt.scatter(Z_tr_tsne[:, 0], Z_tr_tsne[:, 1], c=y_tr.cpu().numpy())
-            plt.title(f"TSNE of train set (@{self.current_epoch})")
-            wandb.log({"train_tsne": wandb.Image(plt)})
-            plt.close()
-
-            plt.scatter(Z_te_tsne[:, 0], Z_te_tsne[:, 1], c=y_ts.cpu().numpy())
-            plt.title(f"TSNE of val set (@{self.current_epoch})")
-            wandb.log({"val_tsne": wandb.Image(plt)})
-            plt.close()
-
     @torch.no_grad()
     def on_train_epoch_end(self):
-        logged = False
-        if self.current_epoch % self.probe_test_per == 0 and self.current_epoch != 0:
-            self.downstream_step()
-            logged = True
-        if self.current_epoch == (self.last_epoch - 1) and not logged:
-            self.downstream_step(tsne=True)
+        current_epoch = self.current_epoch + 1  # 1-indexed
+        last_or_200th = current_epoch == (self.last_epoch) or (current_epoch % 200 == 0)
+
+        if current_epoch % self.probe_test_per == 0 or last_or_200th:
+            epoch = self.current_epoch
+            print("Downstream evaluation..")
+            # Extracting data through encoder and vq_model. And counting tokens
+            print("Encoding data..")
+            z_tr, z_te, y_tr, y_te, train_counts, val_counts = (
+                self.downstream_eval.encode_data(
+                    self.encoder, self.vq_model, device=self.device
+                )
+            )
+            # Probe evaluation
+            print("Probe evaluation..")
+            self.downstream_eval.log_probes(z_tr, z_te, y_tr, y_te)
+            # Codebook evaluation
+            if last_or_200th:
+                codebook = self.vq_model.codebook
+                print("Codebook correlation and similarity..")
+                self.downstream_eval.log_codebook_similarity(
+                    codebook.cpu(), epoch, self.device
+                )
+                print("tsne plots..")
+                self.downstream_eval.log_tsne(z_tr, z_te, y_tr, y_te, epoch)
+                print("token usage..")
+                self.downstream_eval.log_token_usage(train_counts, val_counts, epoch)
+                self.downstream_eval.log_corr_vs_usage(
+                    codebook.cpu(), train_counts, epoch
+                )
 
     @torch.no_grad()
     def on_train_epoch_start(self):
         if self.current_epoch == 0:
-            self.downstream_step()
+            print("Downstream evaluation..")
+            print("Encoding data..")
+            z_tr, z_te, y_tr, y_te, train_counts, val_counts = (
+                self.downstream_eval.encode_data(
+                    self.encoder, self.vq_model, device=self.device
+                )
+            )
+            print("Probe evaluation..")
+            self.downstream_eval.log_probes(z_tr, z_te, y_tr, y_te)
+            print("tsne plots")
+            self.downstream_eval.log_tsne(z_tr, z_te, y_tr, y_te, 0)
+            codebook = self.vq_model.codebook
+            print("Codebook correlation and similarity..")
+            self.downstream_eval.log_codebook_similarity(codebook.cpu(), 0, self.device)
+            print("token usage..")
+            self.downstream_eval.log_token_usage(train_counts, val_counts, 0)
+            self.downstream_eval.log_corr_vs_usage(codebook.cpu(), train_counts, 0)

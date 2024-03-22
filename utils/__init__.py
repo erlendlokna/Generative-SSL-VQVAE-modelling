@@ -11,6 +11,7 @@ import umap
 from sklearn.decomposition import PCA
 from sklearn import metrics
 import torch.nn.functional as F
+import os
 
 
 def get_root_dir():
@@ -95,42 +96,30 @@ def freeze(model):
 
 
 def model_filename(config, model_type):
-    stage1_model_types = ["encoder", "decoder", "vqmodel"]
-    stage2_model_types = ["maskgit", "byolmaskgit"]
+    model_types = {"encoder", "decoder", "vqmodel", "maskgit", "byolmaskgit"}
 
-    assert model_type in stage1_model_types + stage2_model_types, "Non valid model type"
+    assert model_type in model_types, "Non valid model type"
 
-    stage1_ssl_method, stage1_ssl_weight = (
-        config["SSL"]["stage1_method"],
-        config["SSL"]["stage1_weight"],
-    )
-    stage2_ssl_method, stage2_ssl_weight = (
-        config["SSL"]["stage2_method"],
-        config["SSL"]["stage2_weight"],
-    )
+    stage1_ssl_method = config["SSL"]["stage1_method"]
+    stage2_ssl_method = config["SSL"]["stage2_method"]
 
-    orthogonal = config["VQVAE"]["orthogonal_reg_weight"] > 0
+    decorr = config["VQVAE"]["orthogonal_reg_weight"] > 0
     single_view = config["VQVAE"]["recon_augmented_view_scale"] == 0
 
-    stage1_parts = []
-    stage2_parts = []
+    filename_parts = []
 
-    if orthogonal:
-        stage1_parts.append("orthogonal_")
+    if decorr:
+        filename_parts.append("decorr_")
 
     if stage1_ssl_method:
-        stage1_parts.append(f"{stage1_ssl_method}_{stage1_ssl_weight}_")
+        filename_parts.append(f"{stage1_ssl_method}_")
+
+    filename_parts.append(model_type)
 
     if stage2_ssl_method and model_type == "byolmaskgit":
-        stage2_parts.append(f"_{stage2_ssl_method}_{stage2_ssl_weight}")
+        filename_parts.append(f"_{stage2_ssl_method}")
 
-    filename_parts = [
-        part
-        for part in ["".join(stage1_parts), model_type, "".join(stage2_parts)]
-        if part
-    ]
-
-    return "".join(filename_parts)
+    return "".join(part for part in filename_parts if part)
 
 
 def save_model(models_dict: dict, dirname="saved_models", id: str = ""):

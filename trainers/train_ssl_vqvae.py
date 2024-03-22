@@ -18,7 +18,7 @@ from utils import (
     model_filename,
 )
 import torch
-
+import time
 
 torch.set_float32_matmul_precision("medium")
 
@@ -60,8 +60,8 @@ def train_ssl_vqvae(
         input_length,
         config=config,
         n_train_samples=len(train_data_loader.dataset),
-        probe_train_dl=train_data_loader,
-        probe_test_dl=test_data_loader,
+        train_data_loader=train_data_loader,
+        test_data_loader=test_data_loader,
     )
 
     wandb_logger = WandbLogger(
@@ -88,12 +88,14 @@ def train_ssl_vqvae(
         ),
         check_val_every_n_epoch=20,
     )
-
+    start_time = time.time()
     trainer.fit(
         train_exp,
         train_dataloaders=train_data_loader,
         val_dataloaders=test_data_loader if do_validate else None,
     )
+    end_time = time.time()
+    wandb.log({"training_time": end_time - start_time})
 
     # additional log
     n_trainable_params = sum(

@@ -73,31 +73,27 @@ class Projector(nn.Module):
 
 
 class VICReg(nn.Module):
-    def __init__(self, proj_in, config: dict, pooling, **kwargs):
+    def __init__(self, proj_in, config: dict, **kwargs):
         super().__init__()
-        self.vicreg_config = config["SSL"]["vicreg"]
-        self.pooling_dim = pooling
+        self.loss_params = config["SSL"]["vicreg"]
         self.name = "vicreg"
 
         self.projector = Projector(
             proj_in=proj_in,
-            proj_hid=self.vicreg_config["proj_hid"],
-            proj_out=self.vicreg_config["proj_out"],
+            proj_hid=self.loss_params["proj_hid"],
+            proj_out=self.loss_params["proj_out"],
         )
         self.proj_in = proj_in
 
     def forward(self, z):
-        if self.pooling:
-            z = self.adaptive_pooling(z)
-
-        return self.projector(z)
+        return self.projector(self.pooling(z))
 
     def loss_function(
         self,
         z1_projected: Tensor,
         z2_projected: Tensor,
     ):
-        loss_params = self.vicreg_config
+        loss_params = self.loss_params
 
         sim_loss = compute_invariance_loss(z1_projected, z2_projected)
         var_loss = compute_var_loss(z1_projected) + compute_var_loss(z2_projected)
@@ -108,20 +104,17 @@ class VICReg(nn.Module):
             + loss_params["mu"] * var_loss
             + loss_params["nu"] * cov_loss
         )
-        return loss
+        return loss * loss_params["weight"]
 
-    @staticmethod
-    def adaptive_pooling(self, z):
-        # Pools adaptively to a dimension suitable for the projector input dimension.
-        proj_in = self.proj_in
-        z_avg_pooled = F.adaptive_avg_pool2d(
-            z, (1, proj_in // 2)
-        )  # (B, C, H) --> (B, 1, dim/2=H)
-        z_max_pooled = F.adaptive_max_pool2d(
-            z, (1, proj_in // 2)
-        )  # (B, C, H) --> (B, 1, dim/2=H)
-        z_global = torch.cat(
-            (z_avg_pooled.squeeze(1), z_max_pooled.squeeze(1)), dim=1
-        )  # (B, 2H=dim)
+    def pooling(self, z):
+        if len(z.size()) == 3:
+            z = z.unsqueeze(-1)
 
+        z_avg_pooled = F.adaptive_avg_pool2d(z, (1, 1))  # (B, C, 1, 1)
+        z_max_pooled = F.adaptive_max_pool2d(z, (1, 1))
+
+        z_avg_pooled = z_avg_pooled.squeeze(-1).squeeze(-1)  # (B, C)
+        z_max_pooled = z_max_pooled.squeeze(-1).squeeze(-1)
+
+        z_global = torch.cat((z_avg_pooled, z_max_pooled), dim=1)  # (B, 2C)
         return z_global

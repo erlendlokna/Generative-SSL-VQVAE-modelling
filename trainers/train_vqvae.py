@@ -13,6 +13,7 @@ from preprocessing.preprocess_ucr import UCRDatasetImporter
 from preprocessing.data_pipeline import build_data_pipeline
 from utils import load_yaml_param_settings, save_model, get_root_dir, model_filename
 import torch
+import time
 
 torch.set_float32_matmul_precision("medium")
 
@@ -54,8 +55,8 @@ def train_vqvae(
         input_length,
         config=config,
         n_train_samples=len(train_data_loader.dataset),
-        probe_train_dl=train_data_loader,
-        probe_test_dl=test_data_loader,
+        train_data_loader=train_data_loader,
+        test_data_loader=test_data_loader,
     )
     wandb_logger = WandbLogger(
         project=wandb_project_name,
@@ -82,11 +83,16 @@ def train_vqvae(
         check_val_every_n_epoch=20,
     )
 
+    start_time = time.time()
+    # Your training code here
     trainer.fit(
         train_exp,
         train_dataloaders=train_data_loader,
         val_dataloaders=test_data_loader if do_validate else None,
     )
+    end_time = time.time()
+
+    wandb.log({"training_time": end_time - start_time})
 
     # additional log
     n_trainable_params = sum(

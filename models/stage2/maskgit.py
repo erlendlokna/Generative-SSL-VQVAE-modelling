@@ -317,7 +317,7 @@ class MaskGIT(nn.Module):
                 # avoid log 0
                 epsilon = 1e-5
 
-                # Calculate entropy for finite probabilities only
+                # Calculate entropy for finite probabilities
                 entropy = -torch.sum(
                     finite_probs * torch.log(finite_probs + epsilon), dim=-1
                 )
