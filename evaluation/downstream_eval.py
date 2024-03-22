@@ -95,9 +95,8 @@ class DownstreamEval:
 
     def log_token_usage(self, train_count, val_count, epoch):
         token_indices = np.arange(len(train_count))
-
         plt.figure(figsize=(10, 5))
-        sns.barplot(x=token_indices, y=train_count, color="dodgerblue")
+        plt.bar(token_indices, train_count, color="dodgerblue")
         plt.xlabel("Token Index")
         plt.ylabel("Count")
         plt.xlim(-1, len(train_count))
@@ -106,7 +105,7 @@ class DownstreamEval:
         plt.close()
 
         plt.figure(figsize=(10, 5))
-        sns.barplot(x=token_indices, y=val_count, color="dodgerblue")
+        plt.bar(token_indices, val_count, color="dodgerblue")
         plt.xlabel("Token Index")
         plt.ylabel("Count")
         plt.xlim(-1, len(train_count))

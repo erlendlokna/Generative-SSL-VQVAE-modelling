@@ -26,8 +26,8 @@ UCR_SUBSET = [
     # "ShapesAll",
 ]
 
-STAGE1_EPOCHS = 1
-STAGE2_EPOCHS = 1
+STAGE1_EPOCHS = 800
+STAGE2_EPOCHS = 800
 
 NUM_RUNS_PER = 1
 
@@ -87,18 +87,18 @@ def run_experiments():
         c["dataset"]["dataset_name"] = dataset
 
         # Build data pipelines
-        dataset_importer = UCRDatasetImporter(**config["dataset"])
+        dataset_importer = UCRDatasetImporter(**c["dataset"])
         train_data_loader_stage1 = build_data_pipeline(
-            batch_size_stage1, dataset_importer, config, augment=False, kind="train"
+            batch_size_stage1, dataset_importer, c, augment=False, kind="train"
         )
         train_data_loader_stage1_aug = build_data_pipeline(
-            batch_size_stage1, dataset_importer, config, augment=True, kind="train"
+            batch_size_stage1, dataset_importer, c, augment=True, kind="train"
         )
         train_data_loader_stage2 = build_data_pipeline(
-            batch_size_stage2, dataset_importer, config, augment=False, kind="train"
+            batch_size_stage2, dataset_importer, c, augment=False, kind="train"
         )
         test_data_loader = build_data_pipeline(
-            batch_size_stage1, dataset_importer, config, augment=False, kind="test"
+            batch_size_stage1, dataset_importer, c, augment=False, kind="test"
         )  # Same test dataloader for both stages
         # Running experiments:
         for experiment in experiments:
