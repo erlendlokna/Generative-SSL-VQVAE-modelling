@@ -47,6 +47,7 @@ def train_vqvae(
     """
     Trainer for VQVAE or SSL-VQVAE model based on the `do_validate` and `SSL` parameters.
     """
+
     torch.manual_seed(torch_seed)
 
     input_length = train_data_loader.dataset.X.shape[-1]
@@ -82,7 +83,6 @@ def train_vqvae(
         ),
         check_val_every_n_epoch=20,
     )
-
     start_time = time.time()
     # Your training code here
     trainer.fit(
