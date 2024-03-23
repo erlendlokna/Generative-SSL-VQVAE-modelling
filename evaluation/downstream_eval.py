@@ -167,7 +167,7 @@ class DownstreamEval:
     def log_corr_vs_usage(self, codebook, train_count, epoch):
         usage_ratio = train_count / torch.sum(train_count)
 
-        corr = torch.corrcoef(codebook)
+        corr = torch.abs(torch.corrcoef(codebook))
 
         # Remove diagonal elements
         corr = corr - torch.diag(torch.diag(corr))
@@ -180,13 +180,13 @@ class DownstreamEval:
         df = pd.DataFrame(
             {
                 "Token Usage Ratio In Reconstruction": usage_ratio.cpu().numpy(),
-                "Correlation": corresponding_corr.cpu().numpy(),
+                "Abs Correlation": corresponding_corr.cpu().numpy(),
             }
         )
         sns.jointplot(
             data=df,
             x="Token Usage Ratio In Reconstruction",
-            y="Correlation",
+            y="Abs Correlation",
             label="token",
         )
         plt.title(f"Correlation vs Token Usage Ratio in reconstruction (@{epoch})")
