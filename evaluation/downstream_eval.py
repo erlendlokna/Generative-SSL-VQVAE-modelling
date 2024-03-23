@@ -214,10 +214,6 @@ def encode_data(
     # Iterate over the entire dataloader
     counts = torch.zeros(num_tokens, device=device)
 
-    if vq_model is not None:
-        vq_model.training = False
-        vq_model._codebook.training = False
-
     for batch in dataloader:
         x, y = batch  # Unpack the batch.
         if len(x) == 2:
@@ -239,10 +235,6 @@ def encode_data(
         y_list.extend(
             y.cpu().detach().tolist()
         )  # Make sure to detach y and move to CPU as well
-
-    if vq_model is not None:
-        vq_model.training = True
-        vq_model._codebook.training = True
 
     # Convert lists of lists to 2D tensors
     z_encoded = torch.tensor(z_list, device=device)
