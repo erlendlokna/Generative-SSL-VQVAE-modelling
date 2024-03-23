@@ -347,8 +347,8 @@ class Evaluation(object):
             label="mean conditional probability",
         )
 
-        means = torch.stack(means)
-        stds = torch.stack(stds)
+        means = np.stack(means)
+        stds = np.stack(stds)
 
         ax.set_title("conditional probability")
         ax.set_xlabel("t")
@@ -396,15 +396,15 @@ class Evaluation(object):
         wandb.log({"entropy_vs_t": wandb.Image(f)})
         plt.close()
 
-        means = torch.stack(means)
-        stds = torch.stack(stds)
+        means = np.stack(means)
+        stds = np.stack(stds)
 
         # Return the figure and axes
         return means, stds
 
     def log_selected_entropy_vs_t(self, agg_sel_entropy):
-        means = torch.mean(agg_sel_entropy.T, dim=1)
-        stds = torch.std(agg_sel_entropy.T, dim=1)
+        means = torch.mean(agg_sel_entropy.T, dim=1).cpu().numpy()
+        stds = torch.std(agg_sel_entropy.T, dim=1).cpu().numpy()
 
         t_values = np.arange(1, len(means) + 1)
         f, ax = plt.subplots()
@@ -457,7 +457,14 @@ class Evaluation(object):
         mean_sel_e_t, std_sel_e_t = self.log_selected_entropy_vs_t(agg_sel_entropy)
 
         data = np.array(
-            [mean_p_t, std_p_t, mean_e_t, std_e_t, mean_sel_e_t, std_sel_e_t]
+            [
+                mean_p_t,
+                std_p_t,
+                mean_e_t,
+                std_e_t,
+                mean_sel_e_t,
+                std_sel_e_t,
+            ]
         ).T.tolist()
 
         iterative_decoding = wandb.Table(

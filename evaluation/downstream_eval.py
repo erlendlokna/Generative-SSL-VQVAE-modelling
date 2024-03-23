@@ -67,7 +67,7 @@ class DownstreamEval:
         df_tr = pd.DataFrame(z_tr_tsne, columns=["tsne-2d-one", "tsne-2d-two"])
         df_te = pd.DataFrame(z_te_tsne, columns=["tsne-2d-one", "tsne-2d-two"])
 
-        fig, ax = plt.subplots(figsize=(16, 7))
+        fig, ax = plt.subplots(figsize=(10, 5))
         sns.scatterplot(
             x="tsne-2d-one",
             y="tsne-2d-two",
@@ -80,7 +80,7 @@ class DownstreamEval:
         wandb.log({"tsne_plot_train": wandb.Image(fig)})
         plt.close(fig)
 
-        fig, ax = plt.subplots(figsize=(16, 7))
+        fig, ax = plt.subplots(figsize=(10, 5))
         sns.scatterplot(
             x="tsne-2d-one",
             y="tsne-2d-two",
@@ -160,6 +160,7 @@ class DownstreamEval:
         )  # remove the diagonal elements
         corr = corr.view(-1)  # flatten
         sns.histplot(corr.cpu().numpy(), bins=100)
+        plt.xlabel("Correlation")
         plt.title(f"histogram of codebook correlation (@{epoch})")
         wandb.log({"corr_hist": wandb.Image(plt)})
 
@@ -167,6 +168,10 @@ class DownstreamEval:
         usage_ratio = train_count / torch.sum(train_count)
 
         corr = torch.corrcoef(codebook)
+
+        # Remove diagonal elements
+        corr = corr - torch.diag(torch.diag(corr))
+
         total_corr_per = torch.sum(corr, dim=0)
 
         most_used = torch.argsort(usage_ratio)

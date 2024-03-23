@@ -282,7 +282,7 @@ class TimeFreqAugmenter(object):
         gaus_std=0.01,
         num_bands_to_remove=1,
         band_scale_factor=0.1,
-        phase_max_change=np.pi / 3,
+        phase_max_change=np.pi / 4,
         max_shear_x=0.1,
         max_shear_y=0.1,
         **kwargs,
@@ -328,7 +328,6 @@ class TimeFreqAugmenter(object):
             )
 
     def apply_augmentations(self, method_names, input):
-        X = input.copy()
         for method_name in method_names:
             input = self.apply_augmentation(method_name, input)
         return input

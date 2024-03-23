@@ -13,6 +13,9 @@ from trainers.train_maskgit import train_maskgit
 
 import torch
 
+STAGE1_PROJECT_NAME = "SSL_VQVAE-STAGE1-IDUN"
+STAGE2_PROJECT_NAME = "SSL_VQVAE-STAGE2-IDUN"
+
 UCR_SUBSET = [
     # "ElectricDevices",
     # "StarLightCurves",
@@ -33,6 +36,9 @@ NUM_RUNS_PER = 1
 
 SSL_METHODS = ["", "vibcreg", "barlowtwins"]
 
+RUN_STAGE1 = True
+RUN_STAGE2 = True
+
 SEED = 0
 
 
@@ -51,36 +57,43 @@ def run_experiments():
 
     batch_size_stage1 = config["dataset"]["batch_sizes"]["stage1"]
     batch_size_stage2 = config["dataset"]["batch_sizes"]["stage2"]
-    # creating e list of experiments to run
-    experiments = [
-        # Stage 1
-        {
-            "stage": 1,
-            "ssl_method": method,
-            "augmented_data": (method != ""),
-            "orthogonal_reg_weight": ortho_reg,
-            "project_name": "SSL_VQVAE-STAGE1-IDUN",
-            "train_fn": train_vqvae if method == "" else train_ssl_vqvae,
-        }
-        for ortho_reg in [0, 10]
-        for method in SSL_METHODS
-    ] + [
-        # Stage 2
-        {
-            "stage": 2,
-            "ssl_method": method,
-            "augmented_data": False,
-            "orthogonal_reg_weight": ortho_reg,
-            "project_name": "SSL_VQVAE-STAGE2-IDUN",
-            "train_fn": train_maskgit,
-        }
-        for ortho_reg in [0, 10]
-        for method in SSL_METHODS
-    ]
+
+    # List of experiments to run
+    experiments = []
+
+    if RUN_STAGE1:
+        experiments += [
+            # Stage 1
+            {
+                "stage": 1,
+                "ssl_method": method,
+                "augmented_data": (method != ""),
+                "orthogonal_reg_weight": ortho_reg,
+                "project_name": STAGE1_PROJECT_NAME,
+                "train_fn": train_vqvae if method == "" else train_ssl_vqvae,
+            }
+            for ortho_reg in [0, 10]
+            for method in SSL_METHODS
+        ]
+
+    if RUN_STAGE2:
+        experiments += [
+            # Stage 2
+            {
+                "stage": 2,
+                "ssl_method": method,
+                "augmented_data": False,
+                "orthogonal_reg_weight": 0,  # ortho_reg,
+                "project_name": STAGE2_PROJECT_NAME,
+                "train_fn": train_maskgit,
+            }
+            # for ortho_reg in [0, 10]
+            # for method in SSL_METHODS
+        ]
 
     print("Experiments to run:")
     for i, exp in enumerate(experiments):
-        print(f"{i}. {exp}\n")
+        print(f"{i+1}. {exp}\n")
 
     for dataset in UCR_SUBSET:
         c = config.copy()

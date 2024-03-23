@@ -17,7 +17,7 @@ trainer_params:
     - 0
   max_epochs:
     stage1: 1 #000
-    stage2: 1 #1000 #1000 #10000
+    stage2: 100 #1000 #1000 #10000
 
 encoder:
   dim: 64
@@ -127,7 +127,7 @@ augmentations:
     #- "random_masks"
     #- "block"
     #- "band"
-    # "phase"
+    - "phase"
     #- 'rotation'
     # - "gaussian"
     #- "shear"
@@ -142,7 +142,7 @@ augmentations:
     max_magnitude_warp: 1.2
 
     #Time
-    noise_std: 0.01
+    noise_std: 0.05
     AmpR_rate: 0.2
     slope_rate: 0.005
     #TimeFreq
