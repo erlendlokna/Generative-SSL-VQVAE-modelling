@@ -13,8 +13,8 @@ from trainers.train_maskgit import train_maskgit
 
 import torch
 
-STAGE1_PROJECT_NAME = "SSL_VQVAE-STAGE1-IDUN"
-STAGE2_PROJECT_NAME = "SSL_VQVAE-STAGE2-IDUN"
+STAGE1_PROJECT_NAME = "SpringBreak Hallelujah stage 1"
+STAGE2_PROJECT_NAME = "SpringBreak Hallelujah stage 2"
 
 UCR_SUBSET = [
     # "ElectricDevices",
@@ -23,14 +23,14 @@ UCR_SUBSET = [
     # "ECG5000",
     # "TwoPatterns",
     "FordA",
-    # "UWaveGestureLibraryAll",
+    "UWaveGestureLibraryAll",
     # "FordB",
     # "ChlorineConcentration",
     # "ShapesAll",
 ]
 
-STAGE1_EPOCHS = 800
-STAGE2_EPOCHS = 800
+STAGE1_EPOCHS = 1000
+STAGE2_EPOCHS = 1000
 
 NUM_RUNS_PER = 1
 

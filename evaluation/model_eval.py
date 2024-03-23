@@ -616,6 +616,11 @@ class Evaluation(object):
 
         pmi_no_diag = pmi_no_diag.flatten()
         pmi_no_diag = pmi_no_diag[pmi_no_diag > 0]
+        sns.histplot(pmi_no_diag.cpu().numpy(), bins=100)
+        plt.xlabel("PMI > 0")
+        plt.title("Histogram of PMI values")
+        wandb.log({"pmi_hist": wandb.Image(plt)})
+        plt.close()
 
     def log_pmi_vs_usage(self, pmi, token_prob):
         tpmi = pmi.sum(axis=0)

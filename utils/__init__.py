@@ -104,7 +104,6 @@ def model_filename(config, model_type):
     stage2_ssl_method = config["SSL"]["stage2_method"]
 
     decorr = config["VQVAE"]["orthogonal_reg_weight"] > 0
-    single_view = config["VQVAE"]["recon_augmented_view_scale"] == 0
 
     filename_parts = []
 
