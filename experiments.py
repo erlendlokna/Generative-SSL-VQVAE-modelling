@@ -83,12 +83,12 @@ def run_experiments():
                 "stage": 2,
                 "ssl_method": method,
                 "augmented_data": False,
-                "orthogonal_reg_weight": 0,  # ortho_reg,
+                "orthogonal_reg_weight": ortho_reg,
                 "project_name": STAGE2_PROJECT_NAME,
                 "train_fn": train_maskgit,
             }
-            # for ortho_reg in [0, 10]
-            # for method in SSL_METHODS
+            for ortho_reg in [0, 10]
+            for method in SSL_METHODS
         ]
 
     print("Experiments to run:")
