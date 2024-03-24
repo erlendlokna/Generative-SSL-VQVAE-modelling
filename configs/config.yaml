@@ -85,7 +85,7 @@ class_guidance:
   guidance_scale: 1.
 
 SSL:
-  stage1_method: "" #"vibcreg" # "barlowtwins", "vicreg", "vibcreg" or empty
+  stage1_method: "vibcreg" #"vibcreg" # "barlowtwins", "vicreg", "vibcreg" or empty
   stage2_method: "" #"barlowtwins" "vicreg", "vibcreg"
 
   # Hyperparameters for SSL methods.
@@ -120,14 +120,16 @@ augmentations:
     # - "amplitude_resize"
     # - "slope"
     #- 'flip'
-    - "noise_window"
+    - gaussian_noise
+    #- "noise_window"
     - "window_warp"
     - "magnitude_warp"
+    - slice_and_shuffle
   timefreq_augs:
     #- "random_masks"
     #- "block"
     #- "band"
-    - "phase"
+    # - "phase"
     #- 'rotation'
     # - "gaussian"
     #- "shear"
