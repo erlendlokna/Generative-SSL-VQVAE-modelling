@@ -120,7 +120,7 @@ augmentations:
     # - "amplitude_resize"
     # - "slope"
     #- 'flip'
-    - gaussian_noise
+    #- gaussian_noise
     #- "noise_window"
     - "window_warp"
     - "magnitude_warp"

@@ -29,6 +29,7 @@ UCR_SUBSET = [
 
 STAGE1_EPOCHS = 1000
 STAGE2_EPOCHS = 1000
+STAGE2_MINI_EPOCHS = 100
 
 NUM_RUNS_PER = 1
 
@@ -36,7 +37,7 @@ SSL_METHODS = ["", "vibcreg", "barlowtwins"]
 
 RUN_STAGE1 = True
 RUN_STAGE2 = True
-
+RUN_MINI_STAGE2 = True
 SEED = 0
 
 
@@ -68,6 +69,7 @@ def run_experiments():
                 "augmented_data": (method != ""),
                 "orthogonal_reg_weight": ortho_reg,
                 "project_name": STAGE1_PROJECT_NAME,
+                "epochs": STAGE1_EPOCHS,
                 "train_fn": train_vqvae if method == "" else train_ssl_vqvae,
             }
             for ortho_reg in [0, 10]
@@ -83,6 +85,23 @@ def run_experiments():
                 "augmented_data": False,
                 "orthogonal_reg_weight": ortho_reg,
                 "project_name": STAGE2_PROJECT_NAME,
+                "epochs": STAGE2_EPOCHS,
+                "train_fn": train_maskgit,
+            }
+            for ortho_reg in [0, 10]
+            for method in SSL_METHODS
+        ]
+
+    if RUN_MINI_STAGE2:
+        experiments += [
+            # Stage 2
+            {
+                "stage": 2,
+                "ssl_method": method,
+                "augmented_data": False,
+                "orthogonal_reg_weight": ortho_reg,
+                "project_name": STAGE2_PROJECT_NAME,
+                "epochs": STAGE2_MINI_EPOCHS,
                 "train_fn": train_maskgit,
             }
             for ortho_reg in [0, 10]
@@ -133,8 +152,10 @@ def run_experiments():
                         if experiment["augmented_data"]
                         else train_data_loader_stage1
                     )
+                    c["trainer_params"]["max_epochs"]["stage1"] = experiment["epochs"]
                 else:
                     train_data_loader = train_data_loader_stage2
+                    c["trainer_params"]["max_epochs"]["stage2"] = experiment["epochs"]
 
                 experiment["train_fn"](
                     config=c,
