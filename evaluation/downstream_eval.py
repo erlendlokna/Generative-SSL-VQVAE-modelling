@@ -139,14 +139,18 @@ class DownstreamEval:
         np.fill_diagonal(cos_sim_viz, np.nan)
 
         # im = plt.imshow(corr_viz)
-        sns.heatmap(corr_viz)
+        sns.heatmap(corr_viz, cmap="magma")
+        plt.xlabel("Token Index")
+        plt.ylabel("Token Index")
         plt.title(
             f"Mean absolute off-diagonal correlation (@{epoch}): {np.round(mean_abs_corr_off_diagonal.cpu(), 4)}"
         )
         wandb.log({"correlation_matrix": wandb.Image(plt)})
         plt.close()
 
-        sns.heatmap(cos_sim_viz)
+        sns.heatmap(cos_sim_viz, cmap="magma")
+        plt.xlabel("Token Index")
+        plt.ylabel("Token Index")
         plt.title(
             f"Mean absolute off-diagonal cosine similarity (@{epoch}): {np.round(mean_abs_cos_sim_off_diagonal.cpu(), 4)}"
         )

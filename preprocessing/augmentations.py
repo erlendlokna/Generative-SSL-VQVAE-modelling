@@ -141,7 +141,7 @@ class TimeAugmenter(object):
 
         return flipped_subx_views
 
-    def add_gaussian_noise(self, *subx_views, mean=0, variance=0.1):
+    def add_gaussian_noise(self, *subx_views, mean=0, variance=0.01):
         """
         Add Gaussian noise to the input sequences.
         """
@@ -207,7 +207,7 @@ class TimeAugmenter(object):
 
         warped_views = []
         window_ratio = self.window_ratio
-        scales = [0.9, 1.1]  # Define the scales for the warp
+        scales = [0.8, 1.2]  # Define the scales for the warp
 
         for subx in subx_views:
             n_timesteps = subx.shape[0]

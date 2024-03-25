@@ -138,7 +138,7 @@ def train_maskgit(
     evaluation.log_coverage_and_variety(agg_samples, num_tokens_idx)
 
     co_occurence = evaluation.co_occurence_matrix(agg_samples, num_tokens_idx)
-
+    evaluation.log_co_occurence(co_occurence)
     # Calculate probabilities
     token_prob, joint_prob, conditional_prob = evaluation.calculate_probabilities(
         co_occurence

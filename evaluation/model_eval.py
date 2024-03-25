@@ -564,6 +564,14 @@ class Evaluation(object):
 
         return co_occurrence
 
+    def log_co_occurence(self, co_occurence):
+        sns.heatmap(co_occurence, cmap="magma")
+        plt.title("Co-Occurrence Matrix of Tokens")
+        plt.xlabel("Token Index")
+        plt.ylabel("Token Index")
+        wandb.log({"co_occurence": wandb.Image(plt)})
+        plt.close()
+
     def calculate_probabilities(self, co_occurence):
 
         total_sum = torch.sum(co_occurence)
@@ -609,7 +617,7 @@ class Evaluation(object):
     def log_pmi(self, pmi):
         # Plot the PMI matrix without diag
         pmi_no_diag = pmi.fill_diagonal_(0)
-        sns.heatmap(pmi)
+        sns.heatmap(pmi, cmap="coolwarm")
         plt.title("Off Diagonal Pointwise Mutual Information of Tokens")
         wandb.log({"pmi": wandb.Image(plt)})
         plt.close()
@@ -623,23 +631,53 @@ class Evaluation(object):
         plt.close()
 
     def log_pmi_vs_usage(self, pmi, token_prob):
+        # Calculating total pointwise mutual information (TPMI) for each token
         tpmi = pmi.sum(axis=0)
 
-        sorted_indicies = torch.argsort(token_prob)
+        # Sorting indices based on token probability for ascending order
+        sorted_indices = torch.argsort(token_prob)
 
-        most_sampled = token_prob[sorted_indicies]
-        corr_tpmi = tpmi[sorted_indicies]
+        # Sorting the token probabilities and corresponding TPMI values
+        most_sampled = token_prob[sorted_indices].numpy()
+        corr_tpmi = tpmi[sorted_indices].numpy()
 
+        # Creating a DataFrame for easier plotting
         df = pd.DataFrame(
             {"Sample Usage Ratio": most_sampled, "Total Mutual Information": corr_tpmi}
         )
 
+        # Creating the plot with seaborn
         sns.jointplot(
             data=df,
             x="Sample Usage Ratio",
             y="Total Mutual Information",
-            label="tokens",
+            color="royalblue",
+            height=6,
         )
 
-        wandb.log({"pmi_vs_usage": wandb.Image(plt)})
-        plt.close()
+        # Enhancing the plot
+        plt.title("Sample Usage Ratio vs Total Mutual Information", pad=0)
+        plt.xlabel("Sample Usage Ratio")
+        plt.ylabel("Total Mutual Information")
+
+        # Optionally, annotate some points
+        # Example: Highlight the token with the highest TPMI
+        min_tpmi_idx = df["Total Mutual Information"].idxmin()
+        plt.scatter(
+            df.iloc[min_tpmi_idx]["Sample Usage Ratio"],
+            df.iloc[min_tpmi_idx]["Total Mutual Information"],
+            color="red",
+        )
+        plt.text(
+            df.iloc[min_tpmi_idx]["Sample Usage Ratio"],
+            df.iloc[min_tpmi_idx]["Total Mutual Information"],
+            "Lowest TPMI",
+            color="red",
+            verticalalignment="bottom",
+        )
+
+        # Show the plot
+        if max(df["Sample Usage Ratio"]) < 0.4:
+            plt.xlim(0, 0.4)
+        plt.tight_layout()
+        plt.show()
