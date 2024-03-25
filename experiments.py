@@ -28,7 +28,7 @@ UCR_SUBSET = [
 ]
 
 STAGE1_EPOCHS = 1000
-STAGE2_EPOCHS = 1000
+STAGE2_EPOCHS = 800
 STAGE2_MINI_EPOCHS = 100
 
 NUM_RUNS_PER = 1
@@ -144,6 +144,9 @@ def run_experiments():
                 stage = "stage1" if experiment["stage"] == 1 else "stage2"
 
                 run_name = f"{decorr}{ssl_method}{stage}"
+                run_name += (
+                    "-mini" if experiment["epochs"] == STAGE2_MINI_EPOCHS else ""
+                )
 
                 # Set correct data loader
                 if experiment["stage"] == 1:

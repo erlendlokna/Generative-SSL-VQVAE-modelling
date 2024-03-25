@@ -141,7 +141,7 @@ class TimeAugmenter(object):
 
         return flipped_subx_views
 
-    def add_gaussian_noise(self, *subx_views, mean=0, variance=1.0):
+    def add_gaussian_noise(self, *subx_views, mean=0, variance=0.1):
         """
         Add Gaussian noise to the input sequences.
         """
