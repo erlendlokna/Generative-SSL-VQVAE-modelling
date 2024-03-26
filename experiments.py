@@ -11,8 +11,8 @@ from trainers.train_ssl_vqvae import train_ssl_vqvae
 from trainers.train_maskgit import train_maskgit
 import torch
 
-STAGE1_PROJECT_NAME = "SpringBreak Hallelujah stage 1"
-STAGE2_PROJECT_NAME = "SpringBreak Hallelujah stage 2"
+STAGE1_PROJECT_NAME = "augmentations"
+STAGE2_PROJECT_NAME = "augmentations"
 
 UCR_SUBSET = [
     # "ElectricDevices",
@@ -20,7 +20,7 @@ UCR_SUBSET = [
     # "Wafer",
     # "ECG5000",
     # "TwoPatterns",
-    "FordA",
+    # "FordA",
     "UWaveGestureLibraryAll",
     # "FordB",
     # "ChlorineConcentration",
@@ -33,11 +33,11 @@ STAGE2_MINI_EPOCHS = 100
 
 NUM_RUNS_PER = 1
 
-SSL_METHODS = ["", "vibcreg", "barlowtwins"]
+SSL_METHODS = ["vibcreg"]
 
 RUN_STAGE1 = True
 RUN_STAGE2 = True
-RUN_MINI_STAGE2 = True
+RUN_MINI_STAGE2 = False
 SEED = 0
 
 

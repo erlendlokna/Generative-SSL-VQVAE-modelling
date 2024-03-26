@@ -679,5 +679,7 @@ class Evaluation(object):
         # Show the plot
         if max(df["Sample Usage Ratio"]) < 0.4:
             plt.xlim(0, 0.4)
+
         plt.tight_layout()
-        plt.show()
+        wandb.log({"pmi_vs_usage": wandb.Image(plt)})
+        plt.close()

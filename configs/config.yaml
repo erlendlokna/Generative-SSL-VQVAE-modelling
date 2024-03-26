@@ -121,17 +121,17 @@ augmentations:
     # - "slope"
     #- 'flip'
     # - "gaussian_noise"
-    - "noise_window"
-    - "window_warp"
-    - "magnitude_warp"
-    #- slice_and_shuffle
+    #- noise_window
+    #- window_warp
+    #- magnitude_warp
+    - slice_and_shuffle
   timefreq_augs:
     #- "random_masks"
     #- "block"
     #- "band"
     # - "phase"
     #- 'rotation'
-    # - "gaussian"
+    #- gaussian
     #- "shear"
     #- "scale"
 
