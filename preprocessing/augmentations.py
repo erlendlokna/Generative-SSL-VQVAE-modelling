@@ -210,7 +210,7 @@ class TimeAugmenter(object):
 
         warped_views = []
         window_ratio = self.window_ratio
-        scales = [0.8, 1.2]  # Define the scales for the warp
+        scales = [0.1, 1.1]  # Define the scales for the warp
 
         for subx in subx_views:
             n_timesteps = subx.shape[0]
@@ -247,7 +247,7 @@ class TimeAugmenter(object):
 
         return warped_views
 
-    def add_magnitude_warp(self, *subx_views, sigma=0.2, n_knots=4):
+    def add_magnitude_warp(self, *subx_views, sigma=0.1, n_knots=4):
         # reference: https://github.com/AlexanderVNikitin/tsgm/blob/main/tsgm/models/augmentations.py
 
         warped_views = []
