@@ -642,35 +642,33 @@ class Evaluation(object):
         corr_tpmi = tpmi[sorted_indices].numpy()
 
         # Creating a DataFrame for easier plotting
-        df = pd.DataFrame(
-            {"Sample Usage Ratio": most_sampled, "Total Mutual Information": corr_tpmi}
-        )
+        df = pd.DataFrame({"Sample Usage Ratio": most_sampled, "TPMI": corr_tpmi})
 
         # Creating the plot with seaborn
         sns.jointplot(
             data=df,
             x="Sample Usage Ratio",
-            y="Total Mutual Information",
+            y="TPMI",
             color="royalblue",
             height=6,
         )
 
         # Enhancing the plot
-        plt.title("Sample Usage Ratio vs Total Mutual Information", pad=0)
+        plt.title("Sample Usage Ratio vs TPMI", pad=0)
         plt.xlabel("Sample Usage Ratio")
-        plt.ylabel("Total Mutual Information")
+        plt.ylabel("TPMI")
 
         # Optionally, annotate some points
         # Example: Highlight the token with the highest TPMI
-        min_tpmi_idx = df["Total Mutual Information"].idxmin()
+        min_tpmi_idx = df["TPMI"].idxmin()
         plt.scatter(
             df.iloc[min_tpmi_idx]["Sample Usage Ratio"],
-            df.iloc[min_tpmi_idx]["Total Mutual Information"],
+            df.iloc[min_tpmi_idx]["TPMI"],
             color="red",
         )
         plt.text(
             df.iloc[min_tpmi_idx]["Sample Usage Ratio"],
-            df.iloc[min_tpmi_idx]["Total Mutual Information"],
+            df.iloc[min_tpmi_idx]["TPMI"],
             "Lowest TPMI",
             color="red",
             verticalalignment="bottom",

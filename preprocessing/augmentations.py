@@ -65,11 +65,14 @@ class Augmenter(object):
 
 
 class TimeAugmenter(object):
-    def __init__(self, AmpR_rate, slope_rate, noise_std, window_ratio, **kwargs):
+    def __init__(
+        self, AmpR_rate, slope_rate, noise_std, window_ratio, n_segments, **kwargs
+    ):
         self.AmpR_rate = AmpR_rate
         self.slope_rate = slope_rate
         self.noise_std = noise_std
         self.window_ratio = window_ratio
+        self.n_segments = n_segments
 
         # config method mapping:
         self.method_mapping = {
@@ -269,11 +272,12 @@ class TimeAugmenter(object):
 
         return warped_views
 
-    def add_slice_and_shuffle(self, *subx_views, n_segments=3):
+    def add_slice_and_shuffle(self, *subx_views):
         """
         Slice the input sequences into segments and shuffle them.
         """
         shuffled_subx_views = []
+        n_segments = self.n_segments
 
         for subx in subx_views:
             # Randomly pick n_segments-1 points where to slice

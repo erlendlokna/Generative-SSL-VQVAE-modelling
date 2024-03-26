@@ -21,13 +21,13 @@ UCR_SUBSET = [
     # "ECG5000",
     # "TwoPatterns",
     # "FordA",
-    "UWaveGestureLibraryAll",
+    # "UWaveGestureLibraryAll",
     # "FordB",
     # "ChlorineConcentration",
     # "ShapesAll",
 ]
 
-STAGE1_EPOCHS = 1000
+STAGE1_EPOCHS = 800
 STAGE2_EPOCHS = 800
 STAGE2_MINI_EPOCHS = 100
 
@@ -39,6 +39,8 @@ RUN_STAGE1 = True
 RUN_STAGE2 = True
 RUN_MINI_STAGE2 = False
 SEED = 0
+
+AUG_NAME = ""
 
 
 def run_experiments():
@@ -67,12 +69,12 @@ def run_experiments():
                 "stage": 1,
                 "ssl_method": method,
                 "augmented_data": (method != ""),
-                "orthogonal_reg_weight": ortho_reg,
+                "orthogonal_reg_weight": 0,  # ortho_reg,
                 "project_name": STAGE1_PROJECT_NAME,
                 "epochs": STAGE1_EPOCHS,
                 "train_fn": train_vqvae if method == "" else train_ssl_vqvae,
             }
-            for ortho_reg in [0, 10]
+            # for ortho_reg in [0, 10]
             for method in SSL_METHODS
         ]
 
@@ -83,12 +85,12 @@ def run_experiments():
                 "stage": 2,
                 "ssl_method": method,
                 "augmented_data": False,
-                "orthogonal_reg_weight": ortho_reg,
+                "orthogonal_reg_weight": 0,  # ortho_reg,
                 "project_name": STAGE2_PROJECT_NAME,
                 "epochs": STAGE2_EPOCHS,
                 "train_fn": train_maskgit,
             }
-            for ortho_reg in [0, 10]
+            # for ortho_reg in [0, 10]
             for method in SSL_METHODS
         ]
 
@@ -99,12 +101,12 @@ def run_experiments():
                 "stage": 2,
                 "ssl_method": method,
                 "augmented_data": False,
-                "orthogonal_reg_weight": ortho_reg,
+                "orthogonal_reg_weight": 0,  # ortho_reg,
                 "project_name": STAGE2_PROJECT_NAME,
                 "epochs": STAGE2_MINI_EPOCHS,
                 "train_fn": train_maskgit,
             }
-            for ortho_reg in [0, 10]
+            # for ortho_reg in [0, 10]
             for method in SSL_METHODS
         ]
 
@@ -166,7 +168,7 @@ def run_experiments():
                     test_data_loader=test_data_loader,
                     do_validate=True,
                     gpu_device_idx=0,
-                    wandb_run_name=f"{run_name}-{dataset}-run{run+1}",
+                    wandb_run_name=f"{run_name}-{dataset}-{AUG_NAME}",
                     wandb_project_name=experiment["project_name"],
                     torch_seed=SEED,
                 )

@@ -117,7 +117,7 @@ augmentations:
 
   time_augs:
     #- "noise"
-    # - "amplitude_resize"
+    #- "amplitude_resize"
     # - "slope"
     #- 'flip'
     # - "gaussian_noise"
@@ -142,6 +142,7 @@ augmentations:
     max_window_warp: 1.2
     min_magnitude_warp: 0.8
     max_magnitude_warp: 1.2
+    n_segments: 4
 
     #Time
     noise_std: 0.1
