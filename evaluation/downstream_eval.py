@@ -196,58 +196,6 @@ class DownstreamEval:
         wandb.log({"corr_vs_usage": wandb.Image(plt)})
         plt.close()
 
-    def tsne_vs_classifier_confidence(self, z_tr, z_te, y_tr, classifier_type="knn"):
-
-        # Perform t-SNE on encoded data
-        tsne = TSNE(n_components=2, random_state=0)
-        Z_all_tsne = tsne.fit_transform(np.vstack((z_tr, z_te)))
-
-        # Split t-SNE transformed data back into training and testing sets
-        n_tr = z_tr.shape[0]
-        Z_tr_tsne, Z_te_tsne = Z_all_tsne[:n_tr, :], Z_all_tsne[n_tr:, :]
-
-        # Train classifier
-        knn = KNeighborsClassifier(n_neighbors=5)
-        svm = SVC(kernel="linear")
-
-        knn.fit(z_tr, y_tr)
-        svm.fit(z_tr, y_tr)
-
-        knn_confidence_scores = knn.predict_proba(z_te)
-        svm_confidence_scores = svm.decision_function(z_te)
-        svm_confidence_scores = (
-            svm_confidence_scores - svm_confidence_scores.min()
-        ) / (svm_confidence_scores.max() - svm_confidence_scores.min())
-
-        # Visualize t-SNE with classifier confidence
-        plt.figure(figsize=(10, 8))
-        scatter = plt.scatter(
-            Z_te_tsne[:, 0],
-            Z_te_tsne[:, 1],
-            c=knn_confidence_scores,
-            cmap="viridis",
-            alpha=0.7,
-        )
-        plt.colorbar(scatter, label="KNN Confidence")
-        plt.title("t-SNE Visualization Colored by KNN Confidence")
-        plt.xlabel("t-SNE Dimension 1")
-        plt.ylabel("t-SNE Dimension 2")
-        plt.show()
-
-        plt.figure(figsize=(10, 8))
-        scatter = plt.scatter(
-            Z_te_tsne[:, 0],
-            Z_te_tsne[:, 1],
-            c=svm_confidence_scores,
-            cmap="viridis",
-            alpha=0.7,
-        )
-        plt.colorbar(scatter, label="SVM Confidence")
-        plt.title("t-SNE Visualization Colored by SVM Confidence")
-        plt.xlabel("t-SNE Dimension 1")
-        plt.ylabel("t-SNE Dimension 2")
-        plt.show()
-
 
 def encode_data(
     dataloader,

@@ -11,9 +11,13 @@ from trainers.train_ssl_vqvae import train_ssl_vqvae
 from trainers.train_maskgit import train_maskgit
 import torch
 
-STAGE1_PROJECT_NAME = "augmentations"
-STAGE2_PROJECT_NAME = "augmentations"
-
+# Wandb logging information
+STAGE1_PROJECT_NAME = "Final-Stage1-Exps"
+STAGE2_PROJECT_NAME = "Final-Stage2-Exps"
+STAGE2_MINI_PROJECT_NAME = "Final-Stage2-Mini-Exps"
+# Stage 1 experiments to run
+STAGE1_EXPS = ["", "vibcreg", "barlowtwins"]  # empty string means regular VQVAE
+# Datasets to run experiments on
 UCR_SUBSET = [
     # "ElectricDevices",
     # "StarLightCurves",
@@ -26,23 +30,20 @@ UCR_SUBSET = [
     # "ChlorineConcentration",
     # "ShapesAll",
 ]
-
-STAGE1_EPOCHS = 800
-STAGE2_EPOCHS = 800
-STAGE2_MINI_EPOCHS = 100
-
+# NUmber of runs per experiment
 NUM_RUNS_PER = 1
-
-SSL_METHODS = ["vibcreg"]
-
+# Controls
 RUN_STAGE1 = True
 RUN_STAGE2 = True
 RUN_MINI_STAGE2 = False
 SEED = 0
+# Epochs:
+STAGE1_EPOCHS = 1000
+STAGE2_EPOCHS = 1000
+STAGE2_MINI_EPOCHS = 100
 
-AUG_NAME = ""
 
-
+# Main experiment function
 def run_experiments():
     # Set manual seed
     torch.manual_seed(SEED)
@@ -67,15 +68,15 @@ def run_experiments():
             # Stage 1
             {
                 "stage": 1,
-                "ssl_method": method,
-                "augmented_data": (method != ""),
-                "orthogonal_reg_weight": 0,  # ortho_reg,
+                "stage1_exp": exp,
+                "augmented_data": (exp != ""),
+                "orthogonal_reg_weight": ortho_reg,
                 "project_name": STAGE1_PROJECT_NAME,
                 "epochs": STAGE1_EPOCHS,
-                "train_fn": train_vqvae if method == "" else train_ssl_vqvae,
+                "train_fn": train_vqvae if exp == "" else train_ssl_vqvae,
             }
-            # for ortho_reg in [0, 10]
-            for method in SSL_METHODS
+            for ortho_reg in [0, 10]
+            for exp in STAGE1_EXPS
         ]
 
     if RUN_STAGE2:
@@ -83,15 +84,15 @@ def run_experiments():
             # Stage 2
             {
                 "stage": 2,
-                "ssl_method": method,
+                "stage1_exp": exp,
                 "augmented_data": False,
-                "orthogonal_reg_weight": 0,  # ortho_reg,
+                "orthogonal_reg_weight": ortho_reg,
                 "project_name": STAGE2_PROJECT_NAME,
                 "epochs": STAGE2_EPOCHS,
                 "train_fn": train_maskgit,
             }
-            # for ortho_reg in [0, 10]
-            for method in SSL_METHODS
+            for ortho_reg in [0, 10]
+            for exp in STAGE1_EXPS
         ]
 
     if RUN_MINI_STAGE2:
@@ -99,15 +100,15 @@ def run_experiments():
             # Stage 2
             {
                 "stage": 2,
-                "ssl_method": method,
+                "stage1_exp": exp,
                 "augmented_data": False,
-                "orthogonal_reg_weight": 0,  # ortho_reg,
-                "project_name": STAGE2_PROJECT_NAME,
+                "orthogonal_reg_weight": ortho_reg,
+                "project_name": STAGE2_MINI_PROJECT_NAME,
                 "epochs": STAGE2_MINI_EPOCHS,
                 "train_fn": train_maskgit,
             }
-            # for ortho_reg in [0, 10]
-            for method in SSL_METHODS
+            for ortho_reg in [0, 10]
+            for exp in STAGE1_EXPS
         ]
 
     print("Experiments to run:")
@@ -132,23 +133,21 @@ def run_experiments():
         test_data_loader = build_data_pipeline(
             batch_size_stage1, dataset_importer, c, augment=False, kind="test"
         )  # Same test dataloader for both stages
+
         # Running experiments:
         for experiment in experiments:
             # Only configure stage 1 method:
-            c["SSL"][f"stage1_method"] = experiment["ssl_method"]
+            c["SSL"][f"stage1_method"] = experiment["stage1_exp"]
             c["VQVAE"]["orthogonal_reg_weight"] = experiment["orthogonal_reg_weight"]
 
             for run in range(NUM_RUNS_PER):
                 # Wandb run name:
-                method = experiment["ssl_method"]
+                stage1_exp = experiment["stage1_exp"]
+                stage1_exp = f"{stage1_exp}-" if stage1_exp != "" else ""
                 decorr = "decorr-" if experiment["orthogonal_reg_weight"] > 0 else ""
-                ssl_method = f"{method}-" if method != "" else ""
                 stage = "stage1" if experiment["stage"] == 1 else "stage2"
-
-                run_name = f"{decorr}{ssl_method}{stage}"
-                run_name += (
-                    "-mini" if experiment["epochs"] == STAGE2_MINI_EPOCHS else ""
-                )
+                mini = "-mini" if experiment["epochs"] == STAGE2_MINI_EPOCHS else ""
+                run_name = "".join([decorr, stage1_exp, stage, mini])
 
                 # Set correct data loader
                 if experiment["stage"] == 1:
@@ -168,7 +167,7 @@ def run_experiments():
                     test_data_loader=test_data_loader,
                     do_validate=True,
                     gpu_device_idx=0,
-                    wandb_run_name=f"{run_name}-{dataset}-{AUG_NAME}",
+                    wandb_run_name=f"{run_name}-{dataset}",
                     wandb_project_name=experiment["project_name"],
                     torch_seed=SEED,
                 )

@@ -42,8 +42,8 @@ VQVAE:
   orthogonal_reg_weight: 0 #10
 
   # Additional hyperparameters for Two branch VQVAE with codebook decorrelation
-  recon_augmented_view_scale: 0.1
-  recon_original_view_scale: 0.9 #prioritize original view
+  recon_augmented_view_scale: 0.0
+  recon_original_view_scale: 1.0
 
   probe_test_per: 100
 
@@ -62,30 +62,11 @@ MaskGIT:
   # For the BYOL MaskGIT
   moving_average_decay: 0.99
 
-MAGE:
-  choice_temperature: 4 # for masking
-  stochastic_sampling: 1 # from (Lee et al., 2022)
-  T: 10
-  prior_model:
-    hidden_dim: 256
-    encoder_layers: 3 #3
-    decoder_layers: 2
-    heads: 2
-    ff_mult: 1
-    use_rmsnorm: True
-    p_unconditional: 0.2
-
-  mask_ratio:
-    min: 0.5
-    max: 1.0
-    mu: 0.55
-    std: 0.25
-
 class_guidance:
   guidance_scale: 1.
 
 SSL:
-  stage1_method: "vibcreg" #"vibcreg" # "barlowtwins", "vicreg", "vibcreg" or empty
+  stage1_method: "" #"vibcreg" # "barlowtwins", "vicreg", "vibcreg" or empty
   stage2_method: "" #"barlowtwins" "vicreg", "vibcreg"
 
   # Hyperparameters for SSL methods.
@@ -118,12 +99,12 @@ augmentations:
   time_augs:
     #- "noise"
     #- "amplitude_resize"
-    # - "slope"
-    #- 'flip'
-    # - "gaussian_noise"
+    #- "slope"
+    #- "flip"
+    #- "gaussian_noise"
     #- noise_window
-    - window_warp
-    - magnitude_warp
+    #- window_warp
+    #- magnitude_warp
     - slice_and_shuffle
   timefreq_augs:
     #- "random_masks"
