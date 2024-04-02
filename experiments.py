@@ -22,7 +22,7 @@ UCR_SUBSET = [
     # "ElectricDevices",
     # "StarLightCurves",
     # "Wafer",
-    # "ECG5000",
+    "ECG5000",
     # "TwoPatterns",
     # "FordA",
     # "UWaveGestureLibraryAll",
