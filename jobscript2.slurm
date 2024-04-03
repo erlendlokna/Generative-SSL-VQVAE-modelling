@@ -25,4 +25,4 @@ module purge
 # Running your python file
 module load Anaconda3/2023.09-0
 conda activate master
-python experiments1.py
+python experiments2.py

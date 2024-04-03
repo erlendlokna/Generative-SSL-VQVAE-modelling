@@ -19,10 +19,10 @@ STAGE2_MINI_PROJECT_NAME = "Final-Stage2-Mini-Exps"
 STAGE1_EXPS = ["", "vibcreg", "barlowtwins"]  # empty string means regular VQVAE
 # Datasets to run experiments on
 UCR_SUBSET = [
-    # "ElectricDevices",
-    # "StarLightCurves",
-    # "Wafer",
-    "ECG5000",
+    "ElectricDevices",
+    "StarLightCurves",
+    "Wafer",
+    # "ECG5000",
     # "TwoPatterns",
     # "FordA",
     # "UWaveGestureLibraryAll",
