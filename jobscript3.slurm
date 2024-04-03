@@ -1,6 +1,6 @@
 #!/bin/sh
 #SBATCH --account=ie-imf       # E.g. "ie-idi" if you belong to IE
-#SBATCH --job-name=codebook_analysis
+#SBATCH --job-name=SSL-VQVAE
 #SBATCH --time=3-00:00:00         # format: D-HH:MM:SS
 
 #SBATCH --partition=GPUQ          # Asking for a GPU
