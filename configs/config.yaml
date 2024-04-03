@@ -98,14 +98,14 @@ augmentations:
 
   time_augs:
     #- "noise"
-    #- "amplitude_resize"
+    - "amplitude_resize"
     #- "slope"
     #- "flip"
     #- "gaussian_noise"
     #- noise_window
     #- window_warp
     #- magnitude_warp
-    - slice_and_shuffle
+    - "slice_and_shuffle"
   timefreq_augs:
     #- "random_masks"
     #- "block"
@@ -127,7 +127,7 @@ augmentations:
 
     #Time
     noise_std: 0.1
-    AmpR_rate: 0.2
+    AmpR_rate: 0.1
     slope_rate: 0.005
     #TimeFreq
     #Block aug:
