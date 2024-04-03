@@ -35,7 +35,7 @@ NUM_RUNS_PER = 1
 # Controls
 RUN_STAGE1 = True
 RUN_STAGE2 = True
-RUN_MINI_STAGE2 = False
+RUN_MINI_STAGE2 = True
 SEED = 0
 # Epochs:
 STAGE1_EPOCHS = 1000
