@@ -147,7 +147,8 @@ def run_experiments():
                 decorr = "decorr-" if experiment["orthogonal_reg_weight"] > 0 else ""
                 stage = "stage1" if experiment["stage"] == 1 else "stage2"
                 mini = "-mini" if experiment["epochs"] == STAGE2_MINI_EPOCHS else ""
-                run_name = "".join([decorr, stage1_exp, stage, mini])
+                seed = f"-seed{SEED}"
+                run_name = "".join([decorr, stage1_exp, stage, mini, seed])
 
                 # Set correct data loader
                 if experiment["stage"] == 1:
