@@ -66,13 +66,27 @@ class Augmenter(object):
 
 class TimeAugmenter(object):
     def __init__(
-        self, AmpR_rate, slope_rate, noise_std, window_ratio, n_segments, **kwargs
+        self,
+        AmpR_rate,
+        slope_rate,
+        noise_std,
+        window_ratio,
+        n_segments,
+        min_window_warp,
+        max_window_warp,
+        magnitude_sigma,
+        n_knots,
+        **kwargs,
     ):
         self.AmpR_rate = AmpR_rate
         self.slope_rate = slope_rate
         self.noise_std = noise_std
         self.window_ratio = window_ratio
         self.n_segments = n_segments
+        self.max_window_warp = max_window_warp
+        self.min_window_warp = min_window_warp
+        self.magnitude_sigma = magnitude_sigma
+        self.n_knots = n_knots
 
         # config method mapping:
         self.method_mapping = {
@@ -210,7 +224,8 @@ class TimeAugmenter(object):
 
         warped_views = []
         window_ratio = self.window_ratio
-        scales = [0.1, 1.1]  # Define the scales for the warp
+        min_window_warp = self.min_window_warp
+        max_window_warp = self.max_window_warp
 
         for subx in subx_views:
             n_timesteps = subx.shape[0]
@@ -219,7 +234,7 @@ class TimeAugmenter(object):
             window_end = window_start + warp_size
 
             # Select a random scale for the warp
-            scale = np.random.choice(scales)
+            scale = np.random.uniform(min_window_warp, max_window_warp)
 
             # Apply the warp to the window
             window_seg = np.interp(
@@ -247,8 +262,11 @@ class TimeAugmenter(object):
 
         return warped_views
 
-    def add_magnitude_warp(self, *subx_views, sigma=0.1, n_knots=4):
+    def add_magnitude_warp(self, *subx_views):
         # reference: https://github.com/AlexanderVNikitin/tsgm/blob/main/tsgm/models/augmentations.py
+
+        sigma = self.magnitude_sigma
+        n_knots = self.n_knots
 
         warped_views = []
         for subx in subx_views:

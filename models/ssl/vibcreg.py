@@ -247,10 +247,11 @@ class VIbCReg(nn.Module):
 
         self.proj_in = proj_in
 
+        self.dropout = nn.Dropout(self.vibcreg_config["dropout"])
+
     def forward(self, z: Tensor):
-
-        z_pooled = self.pooling(z)
-
+        z_pooled = self.dropout(z)
+        z_pooled = self.pooling(z_pooled)
         return self.projector(z_pooled)
 
     def loss_function(self, z1_projected: Tensor, z2_projected: Tensor):

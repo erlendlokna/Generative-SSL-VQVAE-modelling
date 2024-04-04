@@ -46,8 +46,12 @@ class BarlowTwins(nn.Module):
         )
         self.name = "barlowtwins"
 
+        self.dropout = nn.Dropout(self.loss_params["dropout"])
+
     def forward(self, z):
-        return self.projector(self.pooling(z))
+        z_pooled = self.dropout(z)
+        z_pooled = self.pooling(z)
+        return self.projector(z_pooled)
 
     def loss_function(self, z1_projected, z2_projected):
         loss_params = self.loss_params

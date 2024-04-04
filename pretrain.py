@@ -6,7 +6,6 @@ from argparse import ArgumentParser
 
 from trainers.train_vqvae import train_vqvae
 from trainers.train_ssl_vqvae import train_ssl_vqvae
-from trainers.train_mage import train_mage
 from trainers.train_byol_maskgit import train_byol_maskgit
 from trainers.train_maskgit import train_maskgit
 import torch
