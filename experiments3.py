@@ -12,9 +12,10 @@ from trainers.train_maskgit import train_maskgit
 import torch
 
 # Wandb logging information
-STAGE1_PROJECT_NAME = "Final-Stage1-Exps"
-STAGE2_PROJECT_NAME = "Final-Stage2-Exps"
-STAGE2_MINI_PROJECT_NAME = "Final-Stage2-Mini-Exps"
+STAGE1_PROJECT_NAME = "Final-Stage1-Gaussian"
+STAGE2_PROJECT_NAME = "Final-Stage2-Gaussian"
+STAGE2_MINI_PROJECT_NAME = "Final-Stage2-Mini-Gaussian"
+
 # Stage 1 experiments to run
 STAGE1_EXPS = ["", "vibcreg", "barlowtwins"]  # empty string means regular VQVAE
 # Datasets to run experiments on
