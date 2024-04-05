@@ -16,7 +16,7 @@ trainer_params:
   gpus:
     - 0
   max_epochs:
-    stage1: 1 #000
+    stage1: 600
     stage2: 100 #1000 #1000 #10000
 
 encoder:
@@ -101,19 +101,19 @@ augmentations:
 
   time_augs:
     #- "noise"
-    #- "amplitude_resize"
+    - "amplitude_resize"
     #- "slope"
     #- "flip"
-    #- "gaussian_noise"
+    - "gaussian_noise"
     #- noise_window
-    - window_warp
-    - magnitude_warp
+    #- window_warp
+    #- magnitude_warp
     #- "slice_and_shuffle"
   timefreq_augs:
     #- "random_masks"
     #- "block"
     #- "band"
-    # - "phase"
+    #- "phase"
     #- 'rotation'
     #- gaussian
     #- "shear"
@@ -133,7 +133,7 @@ augmentations:
 
     #Time
     noise_std: 0.1
-    AmpR_rate: 0.1
+    AmpR_rate: 0.2
     slope_rate: 0.005
     #TimeFreq
     #Block aug:
@@ -144,7 +144,7 @@ augmentations:
     band_scale_factor: 0.1
     #Gaussian aug:
     gaus_mean: 0
-    gaus_std: 0.01
+    gaus_std: 0.02
     #rotation aug:
     rotation_max_angle: 0.1
     #scale aug:

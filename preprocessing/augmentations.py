@@ -76,6 +76,8 @@ class TimeAugmenter(object):
         max_window_warp,
         magnitude_sigma,
         n_knots,
+        gaus_mean,
+        gaus_std,
         **kwargs,
     ):
         self.AmpR_rate = AmpR_rate
@@ -87,6 +89,8 @@ class TimeAugmenter(object):
         self.min_window_warp = min_window_warp
         self.magnitude_sigma = magnitude_sigma
         self.n_knots = n_knots
+        self.gaus_mean = gaus_mean
+        self.gaus_std = gaus_std
 
         # config method mapping:
         self.method_mapping = {
@@ -137,7 +141,7 @@ class TimeAugmenter(object):
 
         for subx in subx_views:
             subseq_len = subx.shape[0]
-            mul_AmpR = 1 + np.random.normal(0, self.AmpR_rate, size=(subseq_len,))
+            mul_AmpR = 1 + np.random.normal(0, self.AmpR_rate, size=(subseq_len, 1))
             augmented_view = subx * mul_AmpR
 
             augmented_views.append(augmented_view)
@@ -158,14 +162,14 @@ class TimeAugmenter(object):
 
         return flipped_subx_views
 
-    def add_gaussian_noise(self, *subx_views, mean=0, variance=0.01):
+    def add_gaussian_noise(self, *subx_views):
         """
         Add Gaussian noise to the input sequences.
         """
         noise_subx_views = []
 
         for subx in subx_views:
-            noise = np.random.normal(mean, np.sqrt(variance), subx.shape)
+            noise = np.random.normal(self.gaus_mean, self.gaus_std, subx.shape)
             noise_subx = subx + noise
             noise_subx_views.append(noise_subx)
 
