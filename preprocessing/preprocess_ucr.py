@@ -104,6 +104,9 @@ class UCRDataset(Dataset):
         return self._len
 
 
+import matplotlib.pyplot as plt
+
+
 class AugUCRDataset(Dataset):
     def __init__(
         self,

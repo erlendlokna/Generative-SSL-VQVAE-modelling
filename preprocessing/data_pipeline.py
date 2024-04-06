@@ -46,6 +46,7 @@ def build_data_pipeline(
     :param augment: Whether to apply data augmentation.
     :param n_pairs: Number of pairs to create when augmenting data (if applicable).
     :param shuffle_train: Whether to shuffle the training data.
+    :param augment: Whether to apply data augmentation.
     """
     num_workers = config["dataset"]["num_workers"]
 

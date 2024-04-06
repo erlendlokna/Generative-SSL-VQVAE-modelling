@@ -78,6 +78,7 @@ class TimeAugmenter(object):
         n_knots,
         gaus_mean,
         gaus_std,
+        crop_ratio,
         **kwargs,
     ):
         self.AmpR_rate = AmpR_rate
@@ -91,9 +92,11 @@ class TimeAugmenter(object):
         self.n_knots = n_knots
         self.gaus_mean = gaus_mean
         self.gaus_std = gaus_std
+        self.crop_ratio = crop_ratio
 
         # config method mapping:
         self.method_mapping = {
+            "random_crop": "add_random_crop",
             "amplitude_resize": "add_amplitude_resize",
             "flip": "add_flip",
             "slope": "add_slope",
@@ -126,30 +129,51 @@ class TimeAugmenter(object):
                 setattr(self, key, value)
 
     # --- Augmentation methods ---
-    def add_amplitude_resize(self, *subx_views):
+    def add_random_crop(self, *subx_views):
         """
-        Apply random amplitude resizing to input sequences.
+        Apply random cropping to input sequences based on self.window_ratio.
 
         Parameters:
-        - subx_views: Variable number of input sequences (subseq_len).
+        - subx_views: Variable number of input sequences (batch_size, channels, subseq_len).
 
         Returns:
-        - augmented_views: List of sequences with random amplitude resizing.
+        - cropped_views: List of cropped sequences.
         """
 
-        augmented_views = []
-
+        cropped_views = []
         for subx in subx_views:
-            subseq_len = subx.shape[0]
-            mul_AmpR = 1 + np.random.normal(0, self.AmpR_rate, size=(subseq_len, 1))
-            augmented_view = subx * mul_AmpR
+            subseq_len = subx.shape[-1]
+            crop_size = int(
+                self.crop_ratio * subseq_len
+            )  # Calculate crop size based on self.window_ratio
+            start_idx = np.random.randint(
+                0, subseq_len - crop_size + 1
+            )  # Generate a random start index for the crop
+            cropped_view = subx[
+                start_idx : start_idx + crop_size
+            ]  # Use slicing to crop the subx_view
 
-            augmented_views.append(augmented_view)
+            cropped_views.append(cropped_view)
 
-        if len(augmented_views) == 1:
-            augmented_views = augmented_views[0]
+        if len(cropped_views) == 1:
+            cropped_views = cropped_views[0]
 
-        return augmented_views
+        return cropped_views
+
+    def add_amplitude_resize(self, *subx_views):
+        """
+        :param subx_view: (n_channels * subseq_len)
+        """
+        new_subx_views = []
+        for i in range(len(subx_views)):
+            mul_AmpR = 1 + np.random.normal(0, self.AmpR_rate, size=(1,))
+            new_subx_view = subx_views[i] * mul_AmpR
+            new_subx_views.append(new_subx_view)
+
+        if len(new_subx_views) == 1:
+            new_subx_views = new_subx_views[0]
+
+        return new_subx_views
 
     def add_flip(self, *subx_views):
         """

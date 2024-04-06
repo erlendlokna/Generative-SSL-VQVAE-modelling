@@ -76,7 +76,7 @@ SSL:
     proj_hid: 4096 #projector hidden layer size
     proj_out: 4096 #projector output layer size
     lambda: 0.005
-    dropout: 0.1
+    dropout: 0.0
 
   vicreg:
     weight: 0.01
@@ -85,7 +85,7 @@ SSL:
     lambda: 25 # sim_loss
     mu: 25 # var_loss
     nu: 1 # cov_loss
-    dropout: 0.1
+    dropout: 0.0
 
   vibcreg:
     weight: 0.01
@@ -94,13 +94,14 @@ SSL:
     lambda: 25 # sim_loss
     mu: 25 # var_loss
     nu: 100 # cov_loss
-    dropout: 0.1
+    dropout: 0.0
 
 augmentations:
   use_all_methods: True
 
   time_augs:
     #- "noise"
+    #- "random_crop"
     - "amplitude_resize"
     #- "slope"
     #- "flip"
@@ -132,6 +133,7 @@ augmentations:
     n_segments: 4
 
     #Time
+    crop_ratio: 0.4
     noise_std: 0.1
     AmpR_rate: 0.2
     slope_rate: 0.005
@@ -144,7 +146,7 @@ augmentations:
     band_scale_factor: 0.1
     #Gaussian aug:
     gaus_mean: 0
-    gaus_std: 0.02
+    gaus_std: 0.05
     #rotation aug:
     rotation_max_angle: 0.1
     #scale aug:
