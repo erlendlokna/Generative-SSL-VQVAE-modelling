@@ -1,0 +1,2 @@
+loss,ssl_loss,svm_accuracy,knn_accuracy,perplexity,val_perplexity,mean_abs_corr_off_diagonal,mean_abs_cos_sim_off_diagonal,val_loss,training_time,run_id
+1.772139310836792,,0.6946666666666667,0.7533333333333333,16.632061004638672,14.262202262878418,0.33808374404907227,0.3330704867839813,0.05595437437295914,1505.3591015338898,zrptdmk1

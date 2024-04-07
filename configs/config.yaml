@@ -79,7 +79,7 @@ SSL:
     dropout: 0.0
 
   vicreg:
-    weight: 0.01
+    weight: 0.1
     proj_hid: 4096 #projector hidden layer size
     proj_out: 4096 #projector output layer size
     lambda: 25 # sim_loss
@@ -114,11 +114,11 @@ augmentations:
     #- "random_masks"
     #- "block"
     #- "band"
-    #- "phase"
+    - "phase"
     #- 'rotation'
     #- gaussian
     #- "shear"
-    #- "scale"
+    # - "scale"
 
   aug_params:
     n_fft: 32

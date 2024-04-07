@@ -63,6 +63,22 @@ class Augmenter(object):
         else:
             return X
 
+    def time_augmentation(self, input_timeseries):
+        X = input_timeseries.copy()
+        X = self.time_augmenter.apply_augmentations(self.time_augs, X)
+        return X
+
+    def timefreq_augmentation(self, input_timeseries):
+        X = input_timeseries.copy()
+
+        U = self.timefreq_augmenter.stft(X).numpy()
+        U = self.timefreq_augmenter.apply_augmentations(self.timefreq_augs, U)
+        X = self.timefreq_augmenter.istft(
+            torch.from_numpy(U), original_length=X.shape[-1]
+        ).numpy()
+
+        return X
+
 
 class TimeAugmenter(object):
     def __init__(

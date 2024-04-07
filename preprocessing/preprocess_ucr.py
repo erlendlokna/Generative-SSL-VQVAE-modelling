@@ -104,9 +104,6 @@ class UCRDataset(Dataset):
         return self._len
 
 
-import matplotlib.pyplot as plt
-
-
 class AugUCRDataset(Dataset):
     def __init__(
         self,
@@ -151,14 +148,21 @@ class AugUCRDataset(Dataset):
     def getitem_default(self, idx):
         x, y = self.X[idx, :], self.Y[idx, :]
 
-        x_augmented = self.augmenter.augment(x).numpy()
-
+        x_time_aug1 = self.augmenter.time_augmentation(x).reshape(1, -1)
+        x_time_aug2 = self.augmenter.time_augmentation(x).reshape(1, -1)
+        x_timefreq_aug1 = self.augmenter.timefreq_augmentation(x).reshape(1, -1)
+        x_timefreq_aug2 = self.augmenter.timefreq_augmentation(x).reshape(1, -1)
         x = x.copy().reshape(1, -1)  # (1 x F)
-        x_augmented = x_augmented.copy().reshape(1, -1)
 
-        x, x_augmented = self._assign_float32(x, x_augmented)
+        x, x_time_aug1, x_time_aug2, x_timefreq_aug1, x_timefreq_aug2 = (
+            self._assign_float32(
+                x, x_time_aug1, x_time_aug2, x_timefreq_aug1, x_timefreq_aug2
+            )
+        )
 
-        return [x, x_augmented], y
+        aug_pairs = [[x_time_aug1, x_time_aug2], [x_timefreq_aug1, x_timefreq_aug2]]
+
+        return [x, aug_pairs], y
 
     def __getitem__(self, idx):
         return self.getitem_default(idx)

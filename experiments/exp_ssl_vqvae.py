@@ -115,7 +115,7 @@ class Exp_SSL_VQVAE(ExpBase):
         # using one branch if validation step.
 
         if training:
-            (x, x_aug_view), y = batch  # x and augmented view
+            (x, xaug_pairs), y = batch  # x and augmented view
         else:
             x, y = batch
 
@@ -149,69 +149,71 @@ class Exp_SSL_VQVAE(ExpBase):
         recons_loss["orig.time"] = F.mse_loss(x, xhat) * self.recon_orig_view_scale
         recons_loss["orig.timefreq"] = F.mse_loss(u, uhat) * self.recon_orig_view_scale
 
-        # --- Processing alternate view with SSL ---
+        # --- Processing aaugmented views with SSL ---
         if training:
-            # Same process for alternate view
-            u_aug_view = time_to_timefreq(x_aug_view, self.n_fft, C)  # STFT
-            z_aug_view = self.encoder(u_aug_view)  # Encode
-
-            # --- SSL part ---
-            # projecting both views
-            z_aug_view_projected = self.SSL_method(z_aug_view)
-            z_projected = self.SSL_method(z)
-            # calculating similarity loss in projected space:
-            SSL_loss = self.SSL_method.loss_function(z_projected, z_aug_view_projected)
-
-            if self.recon_aug_view_scale > 0.0:
-                with torch.no_grad():
-                    self.vq_model.training = False
-                    self.vq_model._codebook.training = False  # freeze codebook
-                    zq_aug_view, _, _, _ = quantize(z_aug_view, self.vq_model)
-                    self.vq_model._codebook.training = True
-                    self.vq_model.training = True
-
-                    uhat_aug_view = self.decoder(zq_aug_view)  # Decode
-                    xhat_aug_view = timefreq_to_time(uhat_aug_view, self.n_fft, C)
-                    # Make sure x and xhat have the same length. Padding may occur in the ISTFT and STFT process:
-                    x_aug_view, xhat_aug_view = shape_match(x_aug_view, xhat_aug_view)
-
-                # Stop gradient for the alternate view
-                recons_loss["aug.time"] = (
-                    F.mse_loss(x_aug_view.detach(), xhat_aug_view.detach())
-                    * self.recon_aug_view_scale
-                )
-                recons_loss["aug.timefreq"] = (
-                    F.mse_loss(u_aug_view.detach(), uhat_aug_view.detach())
-                    * self.recon_aug_view_scale
+            # Calculating SSL loss for augmented views
+            for xaug_pair in xaug_pairs:
+                x1, x2 = xaug_pair
+                # STFT:
+                u1 = time_to_timefreq(x1, self.n_fft, x1.shape[1])
+                u2 = time_to_timefreq(x2, self.n_fft, x2.shape[1])
+                # encoder:
+                z1 = self.encoder(u1)
+                z2 = self.encoder(u2)
+                # projection:
+                zp1 = self.SSL_method(z1)
+                zp2 = self.SSL_method(z2)
+                # SSL loss:
+                SSL_loss += (
+                    1.0 / len(xaug_pairs) * self.SSL_method.loss_function(zp1, zp2)
                 )
 
         # plot both views and reconstruction
         r = np.random.uniform(0, 1)
 
-        if r < 0.01 and training:
+        if r < 0.005 and training:
             b = np.random.randint(0, x.shape[0])
             c = np.random.randint(0, x.shape[1])
-            fig, ax = plt.subplots()
+            fig, ax = plt.subplots(1, 2)
             plt.suptitle(f"ep_{self.current_epoch}")
 
-            ax.plot(
+            ax[0].plot(
                 x[b, c].cpu(),
                 label=f"original",
                 c="gray",
                 alpha=1,
             )
-            ax.plot(
-                x_aug_view[b, c].cpu(),
-                label=f"augmented view",
-                c="gray",
-                alpha=0.3,
-            )
-            ax.plot(
+            ax[0].plot(
                 xhat[b, c].detach().cpu(),
                 label=f"reconstruction of original view",
             )
-            ax.set_title("x")
-            ax.set_ylim(-5, 5)
+            ax[0].set_title("x")
+            ax[0].set_ylim(-6, 6)
+
+            ax[1].plot(
+                xaug_pairs[0][0][b, c].cpu(),
+                label=f"time augmented",
+                c="blue",
+                alpha=0.6,
+            )
+            ax[1].plot(
+                xaug_pairs[0][1][b, c].cpu(),
+                label=f"time augmented",
+                c="blue",
+                alpha=0.6,
+            )
+            ax[1].plot(
+                xaug_pairs[1][0][b, c].cpu(),
+                label=f"timefreq augmented",
+                c="red",
+                alpha=0.6,
+            )
+            ax[1].plot(
+                xaug_pairs[1][1][b, c].cpu(),
+                label=f"timefreq augmented",
+                c="red",
+                alpha=0.6,
+            )
             fig.legend()
             wandb.log({"Reconstruction": wandb.Image(plt)})
             plt.close()

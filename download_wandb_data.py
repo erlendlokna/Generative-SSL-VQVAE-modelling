@@ -50,7 +50,7 @@ def wandb_stage1_scan_to_csv(wandb_stage1_project, dataset, api=wandb.Api()):
     for f in filters.values():
         f["config.dataset.dataset_name"] = dataset
 
-    root_dir = f"results/{dataset}/stage1"
+    root_dir = f"results/{wandb_stage1_proj}/{dataset}"
     os.makedirs(root_dir, exist_ok=True)
 
     for key, filter in tqdm(filters.items()):
@@ -123,7 +123,7 @@ def wandb_stage1_summary_to_csv(wandb_stage1_project, dataset, api=wandb.Api()):
     for f in filters.values():
         f["config.dataset.dataset_name"] = dataset
 
-    root_dir = f"results/{dataset}/stage1"
+    root_dir = f"results/{wandb_stage1_proj}/{dataset}"
     os.makedirs(root_dir, exist_ok=True)
 
     for key, filter in tqdm(filters.items()):
@@ -194,7 +194,7 @@ def wandb_stage2_scans_to_csv(wandb_stage2_project, dataset, api=wandb.Api()):
     for f in filters.values():
         f["config.dataset.dataset_name"] = dataset
 
-    root_dir = f"results/{dataset}/stage2"
+    root_dir = f"results/{wandb_stage2_proj}/{dataset}"
     os.makedirs(root_dir, exist_ok=True)
 
     for key, filter in tqdm(filters.items()):
@@ -265,7 +265,7 @@ def wandb_stage2_summary_to_csv(wandb_stage2_project, dataset, api=wandb.Api()):
     for f in filters.values():
         f["config.dataset.dataset_name"] = dataset
 
-    root_dir = f"results/{dataset}/stage2"
+    root_dir = f"results/{wandb_stage2_proj}/{dataset}"
     os.makedirs(root_dir, exist_ok=True)
 
     for key, filter in tqdm(filters.items()):
@@ -305,8 +305,8 @@ datasets = [
 ]
 
 if __name__ == "__main__":
-    wandb_stage1_proj = "Final-Stage1-Slice-Shuffle"
-    wandb_stage2_proj = "Final-Stage2-Slice-Shuffle"
+    wandb_stage1_proj = "Final-Stage1-Gaussian"
+    wandb_stage2_proj = "Final-Stage2-Gaussian"
 
     for dataset in datasets:
         # Stage 1
