@@ -12,12 +12,12 @@ from trainers.train_maskgit import train_maskgit
 import torch
 
 # Wandb logging information
-STAGE1_PROJECT_NAME = "Final-Stage1-Gaussian"
-STAGE2_PROJECT_NAME = "Final-Stage2-Gaussian"
+STAGE1_PROJECT_NAME = "S1-different-perspective"
+STAGE2_PROJECT_NAME = "S2-different-perspective"
 STAGE2_MINI_PROJECT_NAME = "Final-Stage2-Mini-Gaussian"
 
 # Stage 1 experiments to run
-STAGE1_EXPS = ["", "vibcreg", "barlowtwins"]  # empty string means regular VQVAE
+STAGE1_EXPS = ["vibcreg", "barlowtwins"]  # empty string means regular VQVAE
 # Datasets to run experiments on
 UCR_SUBSET = [
     # "ElectricDevices",
@@ -36,11 +36,11 @@ NUM_RUNS_PER = 1
 # Controls
 RUN_STAGE1 = True
 RUN_STAGE2 = True
-RUN_MINI_STAGE2 = True
+RUN_MINI_STAGE2 = False
 SEED = 0
 # Epochs:
-STAGE1_EPOCHS = 1000
-STAGE2_EPOCHS = 1000
+STAGE1_EPOCHS = 800
+STAGE2_EPOCHS = 800
 STAGE2_MINI_EPOCHS = 100
 
 
