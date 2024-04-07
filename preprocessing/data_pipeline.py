@@ -1,6 +1,6 @@
 from torch.utils.data import DataLoader
 from preprocessing.preprocess_ucr import UCRDataset, AugUCRDataset, UCRDatasetImporter
-from preprocessing.augmentations import Augmenter
+from preprocessing.augmentations import CroppedViewsAugmenter
 
 """
 def build_data_pipeline(batch_size, dataset_importer: UCRDatasetImporter, config: dict, kind: str, n_pairs=2, shuffle_train=True) -> DataLoader:
@@ -54,7 +54,7 @@ def build_data_pipeline(
         raise ValueError("Kind must be 'train' or 'test'")
 
     if augment:
-        augmenter = Augmenter(**config["augmentations"])
+        augmenter = CroppedViewsAugmenter(**config["augmentations"])
         dataset = AugUCRDataset(kind, dataset_importer, augmenter, n_pairs=n_pairs)
     else:
         dataset = UCRDataset(kind, dataset_importer)

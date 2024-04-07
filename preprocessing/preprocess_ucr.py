@@ -4,7 +4,7 @@ from torch.utils.data import Dataset
 from sklearn.preprocessing import LabelEncoder
 import math
 from utils import get_root_dir
-from preprocessing.augmentations import Augmenter
+from preprocessing.augmentations import CroppedViewsAugmenter
 import tarfile
 import os
 
@@ -112,7 +112,7 @@ class AugUCRDataset(Dataset):
         self,
         kind: str,
         dataset_importer: UCRDatasetImporter,
-        augmenter: Augmenter,
+        cropped_view_augmenter: CroppedViewsAugmenter,
         n_pairs: int,
         **kwargs,
     ):
@@ -125,7 +125,7 @@ class AugUCRDataset(Dataset):
         """
         super().__init__()
         self.kind = kind
-        self.augmenter = augmenter
+        self.cropped_views_augmenter = cropped_view_augmenter
         self.n_pairs = n_pairs
 
         if kind == "train":
@@ -150,18 +150,80 @@ class AugUCRDataset(Dataset):
 
     def getitem_default(self, idx):
         x, y = self.X[idx, :], self.Y[idx, :]
-
-        x_augmented = self.augmenter.augment(x).numpy()
+        print(x.shape)
+        subx1 = self.cropped_views_augmenter.augment(x)
+        subx2 = self.cropped_views_augmenter.augment(x)
 
         x = x.copy().reshape(1, -1)  # (1 x F)
-        x_augmented = x_augmented.copy().reshape(1, -1)
+        subx1 = subx1.copy().reshape(1, -1)  # (1 x F)
+        subx2 = subx2.copy().reshape(1, -1)
 
-        x, x_augmented = self._assign_float32(x, x_augmented)
+        x, subx1, subx2 = self._assign_float32(x, subx1, subx2)
 
-        return [x, x_augmented], y
+        return [x, [subx1, subx2]], y
 
     def __getitem__(self, idx):
         return self.getitem_default(idx)
 
     def __len__(self):
         return self._len
+
+
+# class AugUCRDataset(Dataset):
+#     def __init__(
+#         self,
+#         kind: str,
+#         dataset_importer: UCRDatasetImporter,
+#         augmenter: Augmenter,
+#         n_pairs: int,
+#         **kwargs,
+#     ):
+#         """
+#         :param kind: "train" / "test"
+#         :param dataset_importer: instance of the `DatasetImporter` class.
+#         :param augs: instance of the `Augmentations` class.
+#         :param used_augmentations: e.g., ["RC", "AmpR", "Vshift"]
+#         :param subseq_lens: determines a number of (subx1, subx2) pairs with `subseq_len` for `RC`.
+#         """
+#         super().__init__()
+#         self.kind = kind
+#         self.augmenter = augmenter
+#         self.n_pairs = n_pairs
+
+#         if kind == "train":
+#             self.X, self.Y = dataset_importer.X_train, dataset_importer.Y_train
+#         elif kind == "test":
+#             self.X, self.Y = dataset_importer.X_test, dataset_importer.Y_test
+#         else:
+#             raise ValueError
+
+#         self._len = self.X.shape[0]
+
+#     @staticmethod
+#     def _assign_float32(*xs):
+#         """
+#         assigns `dtype` of `float32`
+#         so that we wouldn't have to change `dtype` later before propagating data through a model.
+#         """
+#         new_xs = []
+#         for x in xs:
+#             new_xs.append(x.astype(np.float32))
+#         return new_xs[0] if (len(xs) == 1) else new_xs
+
+#     def getitem_default(self, idx):
+#         x, y = self.X[idx, :], self.Y[idx, :]
+
+#         x_augmented = self.augmenter.augment(x).numpy()
+
+#         x = x.copy().reshape(1, -1)  # (1 x F)
+#         x_augmented = x_augmented.copy().reshape(1, -1)
+
+#         x, x_augmented = self._assign_float32(x, x_augmented)
+
+#         return [x, x_augmented], y
+
+#     def __getitem__(self, idx):
+#         return self.getitem_default(idx)
+
+#     def __len__(self):
+#         return self._len

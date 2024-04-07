@@ -101,11 +101,11 @@ augmentations:
 
   time_augs:
     #- "noise"
-    #- "random_crop"
+    - "random_crop"
     - "amplitude_resize"
     #- "slope"
     #- "flip"
-    - "gaussian_noise"
+    # - "gaussian_noise"
     #- noise_window
     #- window_warp
     #- magnitude_warp
@@ -157,3 +157,9 @@ augmentations:
     #Shear aug:
     max_shear_x: 0.01
     max_shear_y: 0.01
+
+  subseq_lens:
+    # determines a number of (subx1, subx2) pairs with `subseq_len` for `RC`
+    # must be in ascending order.
+    - 10
+    - 20

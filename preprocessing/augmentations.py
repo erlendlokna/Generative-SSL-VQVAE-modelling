@@ -17,7 +17,7 @@ class Augmenter(object):
         self.time_augmenter = TimeAugmenter(**aug_params)
         self.timefreq_augmenter = TimeFreqAugmenter(**aug_params)
 
-    def augment(self, input_timeseries, return_combinations=False):
+    def augment(self, input_timeseries, return_combinations=False, samples=1):
         """
         Augments a single time series with a random combination of augmentation methods.
         """
@@ -47,21 +47,47 @@ class Augmenter(object):
         # Applying time augmentations
         X = self.time_augmenter.apply_augmentations(time_methods_to_apply, X)
 
-        # Convert to time-frequency representation
-        U = self.timefreq_augmenter.stft(X).numpy()
+        if self.timefreq_augs:
+            # Convert to time-frequency representation
+            U = self.timefreq_augmenter.stft(X).numpy()
 
-        # Applying time-frequency augmentations
-        U = self.timefreq_augmenter.apply_augmentations(timefreq_methods_to_apply, U)
+            # Applying time-frequency augmentations
+            U = self.timefreq_augmenter.apply_augmentations(
+                timefreq_methods_to_apply, U
+            )
 
-        # converting back
-        X = self.timefreq_augmenter.istft(
-            torch.from_numpy(U), original_length=X.shape[-1]
-        )
+            # converting back
+            X = self.timefreq_augmenter.istft(
+                torch.from_numpy(U), original_length=X.shape[-1]
+            )
 
         if return_combinations:
             return X, picked_augs
         else:
             return X
+
+
+class CroppedViewsAugmenter(object):
+    def __init__(self, time_augs, aug_params, subseq_lens, **kwargs):
+        self.time_augs = time_augs
+        self.time_augmenter = TimeAugmenter(**aug_params)
+        self.subseq_lens = subseq_lens
+
+    def augment(self, input_timeseries):
+        subxs_pairs = []
+
+        for subseq_len in self.subseq_lens:
+            subx_view = input_timeseries.copy()
+
+            subx_view = self.time_augmenter.apply_augmentations(
+                self.time_augs,
+                subx_view,
+                subseq_len=subseq_len,
+            )
+
+            subxs_pairs.append(subx_view)
+
+        return np.array(subxs_pairs)
 
 
 class TimeAugmenter(object):
@@ -108,19 +134,21 @@ class TimeAugmenter(object):
             "gaussian_noise": "add_gaussian_noise",
         }
 
-    def apply_augmentation(self, method_name, input):
+    def apply_augmentation(self, method_name, input, subseq_len=None):
         if method_name in self.method_mapping:
             method = getattr(self, self.method_mapping[method_name])
+            if subseq_len is not None and method_name == "random_crop":
+                return method(subseq_len, input)
             return method(input)
         else:
             raise ValueError(
                 f"{method_name} is not a valid method for time augmentation"
             )
 
-    def apply_augmentations(self, method_names, input):
+    def apply_augmentations(self, method_names, input, subseq_len=None):
         X = input.copy()
         for method_name in method_names:
-            input = self.apply_augmentation(method_name, input)
+            input = self.apply_augmentation(method_name, input, subseq_len)
         return input
 
     def update_parameters(self, **kwargs):
@@ -129,35 +157,49 @@ class TimeAugmenter(object):
                 setattr(self, key, value)
 
     # --- Augmentation methods ---
-    def add_random_crop(self, *subx_views):
-        """
-        Apply random cropping to input sequences based on self.window_ratio.
+    # def add_random_crop(self, *subx_views):
+    #    """
+    #    Apply random cropping to input sequences based on self.window_ratio.
+    #
+    #    Parameters:
+    #    - subx_views: Variable number of input sequences (batch_size, channels, subseq_len).
+    #
+    #    Returns:
+    #    - cropped_views: List of cropped sequences.
+    #    """
 
-        Parameters:
-        - subx_views: Variable number of input sequences (batch_size, channels, subseq_len).
+    #    cropped_views = []
+    #    for subx in subx_views:
+    #        subseq_len = subx.shape[-1]
+    #        crop_size = int(
+    #            self.crop_ratio * subseq_len
+    #        )  # Calculate crop size based on self.window_ratio
+    #        start_idx = np.random.randint(
+    #            0, subseq_len - crop_size + 1
+    #        )  # Generate a random start index for the crop
+    #        cropped_view = subx[
+    #            start_idx : start_idx + crop_size
+    #        ]  # Use slicing to crop the subx_view
+    #
+    #        cropped_views.append(cropped_view)
+    #
+    #    if len(cropped_views) == 1:
+    #        cropped_views = cropped_views[0]
+    #
+    #    return cropped_views
 
-        Returns:
-        - cropped_views: List of cropped sequences.
-        """
-
+    def add_random_crop(self, subseq_len: int, *subx_views):
         cropped_views = []
+        rand_ts = []
         for subx in subx_views:
-            subseq_len = subx.shape[-1]
-            crop_size = int(
-                self.crop_ratio * subseq_len
-            )  # Calculate crop size based on self.window_ratio
-            start_idx = np.random.randint(
-                0, subseq_len - crop_size + 1
-            )  # Generate a random start index for the crop
-            cropped_view = subx[
-                start_idx : start_idx + crop_size
-            ]  # Use slicing to crop the subx_view
-
-            cropped_views.append(cropped_view)
+            seq_len = subx.shape[-1]
+            rand_t = np.random.randint(0, seq_len - subseq_len + 1, size=1)[0]
+            cropped_subx = subx[:, rand_t : rand_t + subseq_len]  # (subseq_len)
+            cropped_views.append(cropped_subx)
+            rand_ts.append(rand_t)
 
         if len(cropped_views) == 1:
             cropped_views = cropped_views[0]
-
         return cropped_views
 
     def add_amplitude_resize(self, *subx_views):
