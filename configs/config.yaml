@@ -66,7 +66,7 @@ class_guidance:
   guidance_scale: 1.
 
 SSL:
-  stage1_method: "vibcreg" #"vibcreg" # "barlowtwins", "vicreg", "vibcreg" or empty
+  stage1_method: "byol" #"vibcreg" # "barlowtwins", "vicreg", "vibcreg" or empty
   stage2_method: "" #"barlowtwins" "vicreg", "vibcreg"
 
   # Hyperparameters for SSL methods.
@@ -95,6 +95,12 @@ SSL:
     mu: 25 # var_loss
     nu: 100 # cov_loss
     dropout: 0.0
+
+  byol:
+    weight: 1.0
+    proj_hid: 512
+    proj_out: 512
+    momentum: 0.9
 
 augmentations:
   use_all_methods: True

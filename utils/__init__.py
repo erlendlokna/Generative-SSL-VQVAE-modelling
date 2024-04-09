@@ -96,7 +96,7 @@ def freeze(model):
 
 
 def model_filename(config, model_type):
-    model_types = {"encoder", "decoder", "vqmodel", "maskgit", "byolmaskgit"}
+    model_types = {"encoder", "decoder", "vqmodel", "maskgit"}
 
     assert model_type in model_types, "Non valid model type"
 
@@ -114,9 +114,6 @@ def model_filename(config, model_type):
         filename_parts.append(f"{stage1_ssl_method}_")
 
     filename_parts.append(model_type)
-
-    if stage2_ssl_method and model_type == "byolmaskgit":
-        filename_parts.append(f"_{stage2_ssl_method}")
 
     return "".join(part for part in filename_parts if part)
 
