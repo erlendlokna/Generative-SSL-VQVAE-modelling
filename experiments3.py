@@ -17,7 +17,9 @@ STAGE2_PROJECT_NAME = "Final-Stage2-Gaussian"
 STAGE2_MINI_PROJECT_NAME = "Final-Stage2-Mini-Gaussian"
 
 # Stage 1 experiments to run
-STAGE1_EXPS = ["", "vibcreg", "barlowtwins"]  # empty string means regular VQVAE
+STAGE1_EXPS = [
+    "byol"
+]  # "", "vibcreg", "barlowtwins"]  # empty string means regular VQVAE
 # Datasets to run experiments on
 UCR_SUBSET = [
     # "ElectricDevices",
