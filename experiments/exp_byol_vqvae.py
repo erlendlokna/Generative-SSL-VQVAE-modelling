@@ -247,6 +247,13 @@ class Exp_BYOL_VQVAE(ExpBase):
                 self.vq_model._codebook.training = True
                 self.vq_model.training = True
 
+                uhat_target = self.decoder(zq_target)
+                xhat_target_view = timefreq_to_time(uhat_target, self.n_fft, C)
+                x, xhat_target = shape_match(x_aug_view, xhat_target_view)
+
+            recons_loss["orig.target.time"] = F.mse_loss(x, xhat_target).detach()
+            recons_loss["orig.target.timefreq"] = F.mse_loss(u, uhat_target).detach()
+
             reg_loss += self.regression_loss(orig_prediction, z_target_orig_projected)
             reg_loss += self.regression_loss(aug_prediction, z_target_aug_projected)
             reg_loss = reg_loss.mean()
@@ -254,9 +261,6 @@ class Exp_BYOL_VQVAE(ExpBase):
             uhat_target = self.decoder(zq_target)
             xhat_target_view = timefreq_to_time(uhat_target, self.n_fft, C)
             x, xhat_target = shape_match(x_aug_view, xhat_target_view)
-
-            recons_loss["orig.target.time"] = F.mse_loss(x, xhat_target)
-            recons_loss["orig.target.timefreq"] = F.mse_loss(u, uhat_target)
 
         # plot both views and reconstruction
         r = np.random.uniform(0, 1)
