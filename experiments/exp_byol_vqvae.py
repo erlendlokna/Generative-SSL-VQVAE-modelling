@@ -214,9 +214,9 @@ class Exp_BYOL_VQVAE(ExpBase):
         if not self.decoder.is_upsample_size_updated:
             self.decoder.register_upsample_size(torch.IntTensor(np.array(u.shape[2:])))
 
-        z_orig_view, z_proj_orig_view = self.online_network(u)
+        z_orig, z_orig_projected = self.online_network(u)
 
-        z_q, indices, vq_loss, perplexity = quantize(z_orig_view, self.vq_model)
+        z_q, indices, vq_loss, perplexity = quantize(z_orig, self.vq_model)
         uhat = self.decoder(z_q)
         xhat = timefreq_to_time(uhat, self.n_fft, C)
         x, xhat = shape_match(x, xhat)
@@ -231,10 +231,12 @@ class Exp_BYOL_VQVAE(ExpBase):
             u_aug_view1 = time_to_timefreq(xaug1, self.n_fft, C)  # STFT
             u_aug_view2 = time_to_timefreq(xaug2, self.n_fft, C)  # STFT
 
-            z_aug_target, z_aug_projected = self.online_network(u_aug_view1)
+            _, z_aug1_projected = self.online_network(u_aug_view1)
+            _, z_aug2_projected = self.online_network(u_aug_view2)
 
-            orig_prediction = self.predictor(z_proj_orig_view)
-            aug_prediction = self.predictor(z_aug_projected)
+            orig_prediction = self.predictor(z_orig_projected)
+            aug1_prediction = self.predictor(z_aug1_projected)
+            aug2_prediction = self.predictor(z_aug2_projected)
 
             with torch.no_grad():
                 _, z_target_orig_projected = self.target_network(u)  # Encode
@@ -242,8 +244,8 @@ class Exp_BYOL_VQVAE(ExpBase):
                 _, z_target_aug2_projected = self.target_network(u_aug_view2)  # Encode
 
             reg_loss += self.regression_loss(orig_prediction, z_target_orig_projected)
-            reg_loss += self.regression_loss(aug_prediction, z_target_aug1_projected)
-            reg_loss += self.regression_loss(aug_prediction, z_target_aug2_projected)
+            reg_loss += self.regression_loss(aug1_prediction, z_target_aug1_projected)
+            reg_loss += self.regression_loss(aug2_prediction, z_target_aug2_projected)
             reg_loss = reg_loss.mean()
 
         # plot both views and reconstruction
