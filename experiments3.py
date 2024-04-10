@@ -30,7 +30,7 @@ UCR_SUBSET = [
     # "ECG5000",
     # "TwoPatterns",
     # "FordA",
-    "UWaveGestureLibraryAll",
+    # "UWaveGestureLibraryAll",
     "FordB",
     "ChlorineConcentration",
     "ShapesAll",
