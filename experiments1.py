@@ -14,6 +14,8 @@ import torch
 # Wandb logging information
 STAGE1_PROJECT_NAME = "S1-vibcreg-adjust"
 STAGE2_PROJECT_NAME = "S2-vibcreg-adjust"
+STAGE1_PROJECT_NAME = "S1-three-viewed"
+STAGE2_PROJECT_NAME = "S2-three-viewed"
 STAGE2_MINI_PROJECT_NAME = "Final-Stage2-Mini-Gaussian"
 # Stage 1 experiments to run
 STAGE1_EXPS = [
