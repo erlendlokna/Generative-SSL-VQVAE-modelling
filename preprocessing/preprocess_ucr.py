@@ -151,14 +151,18 @@ class AugUCRDataset(Dataset):
     def getitem_default(self, idx):
         x, y = self.X[idx, :], self.Y[idx, :]
 
-        x_augmented = self.augmenter.augment(x).numpy()
+        x_augmented1 = self.augmenter.augment(x).numpy()
+        x_augmented2 = self.augmenter.augment(x).numpy()
 
         x = x.copy().reshape(1, -1)  # (1 x F)
-        x_augmented = x_augmented.copy().reshape(1, -1)
+        x_augmented1 = x_augmented1.copy().reshape(1, -1)
+        x_augmented2 = x_augmented2.copy().reshape(1, -1)
 
-        x, x_augmented = self._assign_float32(x, x_augmented)
+        x, x_augmented1, x_augmented2 = self._assign_float32(
+            x, x_augmented1, x_augmented2
+        )
 
-        return [x, x_augmented], y
+        return [x, [x_augmented1, x_augmented2]], y
 
     def __getitem__(self, idx):
         return self.getitem_default(idx)

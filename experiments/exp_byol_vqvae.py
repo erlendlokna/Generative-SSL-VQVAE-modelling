@@ -191,7 +191,7 @@ class Exp_BYOL_VQVAE(ExpBase):
         # using one branch if validation step.
 
         if training:
-            (x, x_aug_view), y = batch  # x and augmented view
+            (x, x_aug_views), y = batch  # x and augmented view
         else:
             x, y = batch
 
@@ -227,19 +227,23 @@ class Exp_BYOL_VQVAE(ExpBase):
 
         # --- Processing alternate view with SSL ---
         if training:
-            u_aug_view = time_to_timefreq(x_aug_view, self.n_fft, C)  # STFT
+            xaug1, xaug2 = x_aug_views
+            u_aug_view1 = time_to_timefreq(xaug1, self.n_fft, C)  # STFT
+            u_aug_view2 = time_to_timefreq(xaug2, self.n_fft, C)  # STFT
 
-            z_aug_target, z_aug_projected = self.online_network(u_aug_view)
+            z_aug_target, z_aug_projected = self.online_network(u_aug_view1)
 
             orig_prediction = self.predictor(z_proj_orig_view)
             aug_prediction = self.predictor(z_aug_projected)
 
             with torch.no_grad():
-                z_orig_view, z_target_orig_projected = self.target_network(u)  # Encode
-                _, z_target_aug_projected = self.target_network(u_aug_view)  # Encode
+                _, z_target_orig_projected = self.target_network(u)  # Encode
+                _, z_target_aug1_projected = self.target_network(u_aug_view1)  # Encode
+                _, z_target_aug2_projected = self.target_network(u_aug_view2)  # Encode
 
             reg_loss += self.regression_loss(orig_prediction, z_target_orig_projected)
-            reg_loss += self.regression_loss(aug_prediction, z_target_aug_projected)
+            reg_loss += self.regression_loss(aug_prediction, z_target_aug1_projected)
+            reg_loss += self.regression_loss(aug_prediction, z_target_aug2_projected)
             reg_loss = reg_loss.mean()
 
         # plot both views and reconstruction
@@ -258,7 +262,13 @@ class Exp_BYOL_VQVAE(ExpBase):
                 alpha=1,
             )
             ax.plot(
-                x_aug_view[b, c].cpu(),
+                xaug1[b, c].cpu(),
+                label=f"augmented view",
+                c="gray",
+                alpha=0.3,
+            )
+            ax.plot(
+                xaug2[b, c].cpu(),
                 label=f"augmented view",
                 c="gray",
                 alpha=0.3,

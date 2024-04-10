@@ -108,16 +108,16 @@ augmentations:
   time_augs:
     #- "noise"
     #- "random_crop"
-    - "amplitude_resize"
+    #- "amplitude_resize"
     #- "slope"
     #- "flip"
-    - "gaussian_noise"
+    #- "gaussian_noise"
     #- noise_window
     #- window_warp
     #- magnitude_warp
     #- "slice_and_shuffle"
   timefreq_augs:
-    #- "random_masks"
+    - "random_masks"
     #- "block"
     #- "band"
     #- "phase"

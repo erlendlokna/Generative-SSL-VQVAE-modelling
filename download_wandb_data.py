@@ -44,6 +44,14 @@ def wandb_stage1_scan_to_csv(wandb_stage1_project, dataset, api=wandb.Api()):
             "config.SSL.stage1_method": "barlowtwins",
             "config.VQVAE.orthogonal_reg_weight": 10,
         },
+        "byol": {
+            "config.SSL.stage1_method": "byol",
+            "config.VQVAE.orthogonal_reg_weight": 0,
+        },
+        "byol-decorr": {
+            "config.SSL.stage1_method": "byol",
+            "config.VQVAE.orthogonal_reg_weight": 10,
+        },
     }
 
     # Ensure the dataset name is included in each filter
@@ -117,6 +125,14 @@ def wandb_stage1_summary_to_csv(wandb_stage1_project, dataset, api=wandb.Api()):
             "config.SSL.stage1_method": "barlowtwins",
             "config.VQVAE.orthogonal_reg_weight": 10,
         },
+        "byol": {
+            "config.SSL.stage1_method": "byol",
+            "config.VQVAE.orthogonal_reg_weight": 0,
+        },
+        "byol-decorr": {
+            "config.SSL.stage1_method": "byol",
+            "config.VQVAE.orthogonal_reg_weight": 10,
+        },
     }
 
     # Ensure the dataset name is included in each filter
@@ -186,6 +202,14 @@ def wandb_stage2_scans_to_csv(wandb_stage2_project, dataset, api=wandb.Api()):
         },
         "barlowtwins-decorr": {
             "config.SSL.stage1_method": "barlowtwins",
+            "config.VQVAE.orthogonal_reg_weight": 10,
+        },
+        "byol": {
+            "config.SSL.stage1_method": "byol",
+            "config.VQVAE.orthogonal_reg_weight": 0,
+        },
+        "byol-decorr": {
+            "config.SSL.stage1_method": "byol",
             "config.VQVAE.orthogonal_reg_weight": 10,
         },
     }
@@ -259,6 +283,14 @@ def wandb_stage2_summary_to_csv(wandb_stage2_project, dataset, api=wandb.Api()):
             "config.SSL.stage1_method": "barlowtwins",
             "config.VQVAE.orthogonal_reg_weight": 10,
         },
+        "byol": {
+            "config.SSL.stage1_method": "byol",
+            "config.VQVAE.orthogonal_reg_weight": 0,
+        },
+        "byol-decorr": {
+            "config.SSL.stage1_method": "byol",
+            "config.VQVAE.orthogonal_reg_weight": 10,
+        },
     }
 
     # Ensure the dataset name is included in each filter
@@ -305,8 +337,8 @@ datasets = [
 ]
 
 if __name__ == "__main__":
-    wandb_stage1_proj = "Final-Stage1-Slice-Shuffle"
-    wandb_stage2_proj = "Final-Stage2-Slice-Shuffle"
+    wandb_stage1_proj = "Final-Stage1-Gaussian"
+    wandb_stage2_proj = "Final-Stage2-Gaussian"
 
     for dataset in datasets:
         # Stage 1

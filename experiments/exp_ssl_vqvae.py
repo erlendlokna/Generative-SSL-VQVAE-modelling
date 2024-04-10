@@ -115,7 +115,7 @@ class Exp_SSL_VQVAE(ExpBase):
         # using one branch if validation step.
 
         if training:
-            (x, x_aug_view), y = batch  # x and augmented view
+            (x, x_aug_views), y = batch  # x and augmented view
         else:
             x, y = batch
 
@@ -152,38 +152,22 @@ class Exp_SSL_VQVAE(ExpBase):
         # --- Processing alternate view with SSL ---
         if training:
             # Same process for alternate view
-            u_aug_view = time_to_timefreq(x_aug_view, self.n_fft, C)  # STFT
-            z_aug_view = self.encoder(u_aug_view)  # Encode
+            x_aug1, x_aug2 = x_aug_views
+            u_aug_view1 = time_to_timefreq(x_aug1, self.n_fft, C)  # STFT
+            u_aug_view2 = time_to_timefreq(x_aug2, self.n_fft, C)  # STFT
+
+            z_aug_view1 = self.encoder(u_aug_view1)  # Encode
+            z_aug_view2 = self.encoder(u_aug_view2)  # Encode
 
             # --- SSL part ---
             # projecting both views
-            z_aug_view_projected = self.SSL_method(z_aug_view)
-            z_projected = self.SSL_method(z)
+            z_aug_view1_projected = self.SSL_method(z_aug_view1)
+            z_aug_view2_projected = self.SSL_method(z_aug_view2)
+
             # calculating similarity loss in projected space:
-            SSL_loss = self.SSL_method.loss_function(z_projected, z_aug_view_projected)
-
-            if self.recon_aug_view_scale > 0.0:
-                with torch.no_grad():
-                    self.vq_model.training = False
-                    self.vq_model._codebook.training = False  # freeze codebook
-                    zq_aug_view, _, _, _ = quantize(z_aug_view, self.vq_model)
-                    self.vq_model._codebook.training = True
-                    self.vq_model.training = True
-
-                    uhat_aug_view = self.decoder(zq_aug_view)  # Decode
-                    xhat_aug_view = timefreq_to_time(uhat_aug_view, self.n_fft, C)
-                    # Make sure x and xhat have the same length. Padding may occur in the ISTFT and STFT process:
-                    x_aug_view, xhat_aug_view = shape_match(x_aug_view, xhat_aug_view)
-
-                # Stop gradient for the alternate view
-                recons_loss["aug.time"] = (
-                    F.mse_loss(x_aug_view.detach(), xhat_aug_view.detach())
-                    * self.recon_aug_view_scale
-                )
-                recons_loss["aug.timefreq"] = (
-                    F.mse_loss(u_aug_view.detach(), uhat_aug_view.detach())
-                    * self.recon_aug_view_scale
-                )
+            SSL_loss = self.SSL_method.loss_function(
+                z_aug_view1_projected, z_aug_view2_projected
+            )
 
         # plot both views and reconstruction
         r = np.random.uniform(0, 1)
@@ -201,7 +185,13 @@ class Exp_SSL_VQVAE(ExpBase):
                 alpha=1,
             )
             ax.plot(
-                x_aug_view[b, c].cpu(),
+                x_aug1[b, c].cpu(),
+                label=f"augmented view",
+                c="gray",
+                alpha=0.3,
+            )
+            ax.plot(
+                x_aug2[b, c].cpu(),
                 label=f"augmented view",
                 c="gray",
                 alpha=0.3,
