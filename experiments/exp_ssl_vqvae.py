@@ -110,14 +110,33 @@ class Exp_SSL_VQVAE(ExpBase):
         self.recon_aug_view_scale = config["VQVAE"]["recon_augmented_view_scale"]
         self.recon_orig_view_scale = config["VQVAE"]["recon_original_view_scale"]
 
+    def encode_cropped_views(self, x_crops):
+        z_list = []
+        for x_view in x_crops:
+            u = time_to_timefreq(x_view, self.n_fft, x_view.shape[1])
+            z = self.encoder(u)
+            z_list.append(z)
+
+        return z_list, u.shape
+
+    def combine_zs(self, z_list):
+        z = torch.stack(z_list)
+        z.reshape(z.shape[1], z.shape[0], z.shape[2], -1)
+        return z
+
     def forward(self, batch, training=True):
         # One branch or two branch forward pass
         # using one branch if validation step.
 
         if training:
-            (x, x_aug_view), y = batch  # x and augmented view
+            x_crops, x_aug_crops, y = batch  # x and augmented view
+            x_crops = torch.transpose(
+                x_crops, 1, 0
+            )  # (B, n_splits, C, L) -> (n_splits, B, C, L)
+            x_aug_crops = torch.transpose(x_aug_crops, 1, 0)
         else:
-            x, y = batch
+            x_crops, y = batch
+            x_crops = torch.transpose(x_crops, 1, 0)
 
         recons_loss = {
             "orig.time": 0.0,
@@ -131,15 +150,16 @@ class Exp_SSL_VQVAE(ExpBase):
         codebook_decorr_loss = 0.0
         SSL_loss = 0.0
 
-        C = x.shape[1]
+        # cropped to regular:
+        x = torch.transpose(x_crops, 0, 1)
+        x = x.view(x.shape[0], -1).unsqueeze(1)
+
+        C = x.shape[1]  # channels
 
         # --- Processing original view ---
-        u = time_to_timefreq(x, self.n_fft, C)
+        z_list = self.encode_cropped_views(x_crops)  # encoding cropped views
+        z = self.combine_zs(z_list)  # combining into one z
 
-        if not self.decoder.is_upsample_size_updated:
-            self.decoder.register_upsample_size(torch.IntTensor(np.array(u.shape[2:])))
-
-        z = self.encoder(u)
         z_q, indices, vq_loss, perplexity = quantize(z, self.vq_model)
         uhat = self.decoder(z_q)
         xhat = timefreq_to_time(uhat, self.n_fft, C)
@@ -152,37 +172,18 @@ class Exp_SSL_VQVAE(ExpBase):
         # --- Processing alternate view with SSL ---
         if training:
             # Same process for alternate view
-            u_aug_view = time_to_timefreq(x_aug_view, self.n_fft, C)  # STFT
-            z_aug_view = self.encoder(u_aug_view)  # Encode
+            x_aug_crops = torch.randperm(x_crops.shape[0])
+            z_aug_list = self.encode_cropped_views(x_aug_crops)
 
-            # --- SSL part ---
-            # projecting both views
-            z_aug_view_projected = self.SSL_method(z_aug_view)
-            z_projected = self.SSL_method(z)
-            # calculating similarity loss in projected space:
-            SSL_loss = self.SSL_method.loss_function(z_projected, z_aug_view_projected)
+            for i in range(len(z_list)):
+                z_aug_view_cropped = z_aug_list[i]
+                z_orig_view_cropped = z_list[i]
+                z_aug_view_projected = self.SSL_method(z_aug_view_cropped)
+                z_orig_view_projected = self.SSL_method(z_orig_view_cropped)
 
-            if self.recon_aug_view_scale > 0.0:
-                with torch.no_grad():
-                    self.vq_model.training = False
-                    self.vq_model._codebook.training = False  # freeze codebook
-                    zq_aug_view, _, _, _ = quantize(z_aug_view, self.vq_model)
-                    self.vq_model._codebook.training = True
-                    self.vq_model.training = True
-
-                    uhat_aug_view = self.decoder(zq_aug_view)  # Decode
-                    xhat_aug_view = timefreq_to_time(uhat_aug_view, self.n_fft, C)
-                    # Make sure x and xhat have the same length. Padding may occur in the ISTFT and STFT process:
-                    x_aug_view, xhat_aug_view = shape_match(x_aug_view, xhat_aug_view)
-
-                # Stop gradient for the alternate view
-                recons_loss["aug.time"] = (
-                    F.mse_loss(x_aug_view.detach(), xhat_aug_view.detach())
-                    * self.recon_aug_view_scale
-                )
-                recons_loss["aug.timefreq"] = (
-                    F.mse_loss(u_aug_view.detach(), uhat_aug_view.detach())
-                    * self.recon_aug_view_scale
+                # calculating similarity loss in projected space:
+                SSL_loss += self.SSL_method.loss_function(
+                    z_orig_view_projected, z_aug_view_projected
                 )
 
         # plot both views and reconstruction
@@ -199,12 +200,6 @@ class Exp_SSL_VQVAE(ExpBase):
                 label=f"original",
                 c="gray",
                 alpha=1,
-            )
-            ax.plot(
-                x_aug_view[b, c].cpu(),
-                label=f"augmented view",
-                c="gray",
-                alpha=0.3,
             )
             ax.plot(
                 xhat[b, c].detach().cpu(),

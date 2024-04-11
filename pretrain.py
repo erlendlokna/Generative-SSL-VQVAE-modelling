@@ -58,16 +58,34 @@ if __name__ == "__main__":
     dataset_importer = UCRDatasetImporter(**config["dataset"])
     batch_size = config["dataset"]["batch_sizes"]["stage1"]
 
-    train_data_loader = build_data_pipeline(
-        batch_size, dataset_importer, config, augment=False, kind="train"
-    )
+    split_size = int(
+        0.2 * dataset_importer.X_train.shape[-1]
+    )  # Ensure split_size is an integer
 
+    train_data_loader = build_data_pipeline(
+        batch_size,
+        dataset_importer,
+        config,
+        augment=False,
+        kind="train",
+        split_size=split_size,
+    )
     train_data_loader_aug = build_data_pipeline(
-        batch_size, dataset_importer, config, augment=True, kind="train"
+        batch_size,
+        dataset_importer,
+        config,
+        augment=True,
+        kind="train",
+        split_size=split_size,
     )
 
     test_data_loader = build_data_pipeline(
-        batch_size, dataset_importer, config, augment=False, kind="test"
+        batch_size,
+        dataset_importer,
+        config,
+        augment=False,
+        kind="test",
+        split_size=split_size,
     )
 
     wandb_project = "codebook analysis"

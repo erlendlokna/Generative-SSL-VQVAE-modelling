@@ -55,6 +55,9 @@ def train_ssl_vqvae(
     """
     torch.manual_seed(torch_seed)
 
+    split_size = int(
+        0.2 * train_data_loader.dataset.X.shape[-1]
+    )  # Ensure split_size is an integer
     input_length = train_data_loader.dataset.X.shape[-1]
 
     use_byol = config["SSL"]["stage1_method"] == "byol"
@@ -68,7 +71,7 @@ def train_ssl_vqvae(
         )
     else:
         train_exp = Exp_SSL_VQVAE(
-            input_length,
+            split_size,
             config=config,
             n_train_samples=len(train_data_loader.dataset),
             train_data_loader=train_data_loader,
