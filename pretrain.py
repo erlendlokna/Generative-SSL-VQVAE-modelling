@@ -59,15 +59,26 @@ if __name__ == "__main__":
     batch_size = config["dataset"]["batch_sizes"]["stage1"]
 
     train_data_loader = build_data_pipeline(
-        batch_size, dataset_importer, config, augment=False, kind="train"
+        batch_size,
+        dataset_importer,
+        config,
+        augment=False,
+        kind="train",
     )
-
     train_data_loader_aug = build_data_pipeline(
-        batch_size, dataset_importer, config, augment=True, kind="train"
+        batch_size,
+        dataset_importer,
+        config,
+        augment=True,
+        kind="train",
     )
 
     test_data_loader = build_data_pipeline(
-        batch_size, dataset_importer, config, augment=False, kind="test"
+        batch_size,
+        dataset_importer,
+        config,
+        augment=False,
+        kind="test",
     )
 
     wandb_project = "codebook analysis"

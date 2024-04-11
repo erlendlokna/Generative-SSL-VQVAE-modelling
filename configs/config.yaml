@@ -99,7 +99,7 @@ SSL:
     weight: 1.0
     proj_hid: 512
     proj_out: 512
-    momentum: 0.99
+    momentum: 0.96
 
 augmentations:
   use_all_methods: True

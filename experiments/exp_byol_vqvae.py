@@ -199,11 +199,13 @@ class Exp_BYOL_VQVAE(ExpBase):
         recons_loss = {
             "orig.time": 0.0,
             "orig.timefreq": 0.0,
+            "orig.target.timefreq": 0.0,
+            "aug.time": 0.0,
+            "aug.timefreq": 0.0,
         }
 
         vq_loss = None
         perplexity = 0.0
-        codebook_decorr_loss = 0.0
         reg_loss = 0.0
 
         C = x_orig.shape[1]
@@ -228,23 +230,29 @@ class Exp_BYOL_VQVAE(ExpBase):
             aug_prediction = self.predictor(z_aug_proj)
 
             with torch.no_grad():
-                _, z_target_orig_projected = self.target_network(u_orig)  # Encode
-                _, z_target_aug_projected = self.target_network(u_aug)  # Encode
+                z_orig_view, z_target_orig_projected = self.target_network(u)  # Encode
+                _, z_target_aug_projected = self.target_network(u_aug_view)  # Encode
+
+                self.vq_model.training = False
+                self.vq_model._codebook.training = False  # freeze codebook
+                zq_target, _, _, _ = quantize(z_orig_view, self.vq_model)
+                self.vq_model._codebook.training = True
+                self.vq_model.training = True
+
+                uhat_target = self.decoder(zq_target)
+                xhat_target_view = timefreq_to_time(uhat_target, self.n_fft, C)
+                x, xhat_target = shape_match(x_aug_view, xhat_target_view)
+
+            recons_loss["orig.target.time"] = F.mse_loss(x, xhat_target).detach()
+            recons_loss["orig.target.timefreq"] = F.mse_loss(u, uhat_target).detach()
 
             reg_loss += self.regression_loss(orig_prediction, z_target_orig_projected)
             reg_loss += self.regression_loss(aug_prediction, z_target_aug_projected)
             reg_loss = reg_loss.mean()
 
-        # Choose between original and augmented view for reconstruction
-        recon_aug = np.random.uniform(0, 1) < self.aug_recon_rate
-        x = x_aug if recon_aug else x_orig
-        u = u_aug if recon_aug else u_orig
-        z = z_aug if recon_aug else z_orig
-
-        z_q, _, vq_loss, perplexity = quantize(z, self.vq_model)
-        uhat = self.decoder(z_q)
-        xhat = timefreq_to_time(uhat, self.n_fft, C)
-        x, xhat = shape_match(x, xhat)
+            uhat_target = self.decoder(zq_target)
+            xhat_target_view = timefreq_to_time(uhat_target, self.n_fft, C)
+            x, xhat_target = shape_match(x_aug_view, xhat_target_view)
 
         # plot both views and reconstruction
         r = np.random.uniform(0, 1)
@@ -291,13 +299,16 @@ class Exp_BYOL_VQVAE(ExpBase):
         # forward:
         recons_loss, vq_loss, perplexity, reg_loss = self.forward(x, training=True)
         # --- Total Loss ---
-
-        loss = (
-            recons_loss["orig.time"]
-            + recons_loss["orig.timefreq"]
-            + vq_loss["loss"]
-            + reg_loss
+        recon_loss = 1.0 / 2 * (
+            recons_loss["orig.time"] + recons_loss["orig.target.time"]
+        ) + 1.0 / 2 * (
+            recons_loss["orig.timefreq"] + recons_loss["orig.target.timefreq"]
         )
+        loss = recon_loss + vq_loss["loss"] + reg_loss
+
+        # lr scheduler
+        sch = self.lr_schedulers()
+        sch.step()
 
         self.manual_backward(loss)
         opt.step()
