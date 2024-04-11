@@ -155,7 +155,7 @@ class AugUCRDataset(Dataset):
 
         x, x_augmented = self._assign_float32(x, x_augmented)
 
-        return x, x_augmented, y
+        return [x, x_augmented], y
 
     def __getitem__(self, idx):
         return self.getitem_default(idx)

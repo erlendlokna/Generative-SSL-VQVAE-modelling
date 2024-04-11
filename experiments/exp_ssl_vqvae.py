@@ -152,9 +152,9 @@ class Exp_SSL_VQVAE(ExpBase):
 
         # Choose between original and augmented view for reconstruction
         recon_aug = np.random.uniform(0, 1) < 0.05
-        x = x_aug if recon_aug else x_orig
-        u = u_aug if recon_aug else u_orig
-        z = z_aug if recon_aug else z_orig
+        x = x_aug if (recon_aug and training) else x_orig
+        u = u_aug if (recon_aug and training) else u_orig
+        z = z_aug if (recon_aug and training) else z_orig
 
         z_q, _, vq_loss, perplexity = quantize(z, self.vq_model)
         uhat = self.decoder(z_q)

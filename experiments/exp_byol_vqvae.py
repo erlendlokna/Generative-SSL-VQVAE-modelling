@@ -289,12 +289,13 @@ class Exp_BYOL_VQVAE(ExpBase):
         # forward:
         recons_loss, vq_loss, perplexity, reg_loss = self.forward(x, training=True)
         # --- Total Loss ---
-        recon_loss = 1.0 / 2 * (
-            recons_loss["orig.time"] + recons_loss["orig.target.time"]
-        ) + 1.0 / 2 * (
-            recons_loss["orig.timefreq"] + recons_loss["orig.target.timefreq"]
+
+        loss = (
+            recons_loss["orig.time"]
+            + recons_loss["orig.timefreq"]
+            + vq_loss["loss"]
+            + reg_loss
         )
-        loss = recon_loss + vq_loss["loss"] + reg_loss
 
         # lr scheduler
         sch = self.lr_schedulers()
