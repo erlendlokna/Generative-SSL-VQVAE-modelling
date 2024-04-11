@@ -199,9 +199,6 @@ class Exp_BYOL_VQVAE(ExpBase):
         recons_loss = {
             "orig.time": 0.0,
             "orig.timefreq": 0.0,
-            "orig.target.timefreq": 0.0,
-            "aug.time": 0.0,
-            "aug.timefreq": 0.0,
         }
 
         vq_loss = None
@@ -230,36 +227,29 @@ class Exp_BYOL_VQVAE(ExpBase):
             aug_prediction = self.predictor(z_aug_proj)
 
             with torch.no_grad():
-                z_orig_view, z_target_orig_projected = self.target_network(u)  # Encode
-                _, z_target_aug_projected = self.target_network(u_aug_view)  # Encode
-
-                self.vq_model.training = False
-                self.vq_model._codebook.training = False  # freeze codebook
-                zq_target, _, _, _ = quantize(z_orig_view, self.vq_model)
-                self.vq_model._codebook.training = True
-                self.vq_model.training = True
-
-                uhat_target = self.decoder(zq_target)
-                xhat_target_view = timefreq_to_time(uhat_target, self.n_fft, C)
-                x, xhat_target = shape_match(x_aug_view, xhat_target_view)
-
-            recons_loss["orig.target.time"] = F.mse_loss(x, xhat_target).detach()
-            recons_loss["orig.target.timefreq"] = F.mse_loss(u, uhat_target).detach()
+                _, z_target_orig_projected = self.target_network(u_orig)  # Encode
+                _, z_target_aug_projected = self.target_network(u_aug)  # Encode
 
             reg_loss += self.regression_loss(orig_prediction, z_target_orig_projected)
             reg_loss += self.regression_loss(aug_prediction, z_target_aug_projected)
             reg_loss = reg_loss.mean()
 
-            uhat_target = self.decoder(zq_target)
-            xhat_target_view = timefreq_to_time(uhat_target, self.n_fft, C)
-            x, xhat_target = shape_match(x_aug_view, xhat_target_view)
+        recon_aug = np.random.uniform(0, 1) < self.aug_recon_rate
+        x = x_aug if (recon_aug and training) else x_orig
+        u = u_aug if (recon_aug and training) else u_orig
+        z = z_aug if (recon_aug and training) else z_orig
+
+        z_q, _, vq_loss, perplexity = quantize(z, self.vq_model)
+        uhat = self.decoder(z_q)
+        xhat = timefreq_to_time(uhat, self.n_fft, C)
+        x, xhat = shape_match(x, xhat)
 
         # plot both views and reconstruction
         r = np.random.uniform(0, 1)
 
         if r < 0.01 and training:
-            b = np.random.randint(0, x.shape[0])
-            c = np.random.randint(0, x.shape[1])
+            b = np.random.randint(0, x_orig.shape[0])
+            c = np.random.randint(0, x_orig.shape[1])
             fig, ax = plt.subplots()
             plt.suptitle(f"ep_{self.current_epoch}")
 

@@ -64,9 +64,7 @@ class UCRDatasetImporter(object):
 
 
 class UCRDataset(Dataset):
-    def __init__(
-        self, kind: str, dataset_importer: UCRDatasetImporter, split_size=None, **kwargs
-    ):
+    def __init__(self, kind: str, dataset_importer: UCRDatasetImporter, **kwargs):
         super().__init__()
         self.kind = kind
 
@@ -83,12 +81,6 @@ class UCRDataset(Dataset):
 
         self._len = self.X.shape[0]
 
-        self.split_size = split_size
-        if split_size is not None:
-            self.n_splits = dataset_importer.X_train.shape[1] // split_size
-        else:
-            self.n_splits = 0
-
     @staticmethod
     def _assign_float32(*xs):
         """
@@ -100,23 +92,8 @@ class UCRDataset(Dataset):
             new_xs.append(x.astype(np.float32))
         return new_xs[0] if (len(xs) == 1) else new_xs
 
-    def crop(self, x):
-        # Crop the data, in a random window
-        if np.random.rand() < 0.5:
-            x = x[: self.split_size * self.n_splits].astype(np.float32)
-        else:
-            start_idx = x.shape[0] - self.split_size * self.n_splits
-            x = x[start_idx:].astype(np.float32)
-
-        x_splits = np.array_split(x, self.split_size, axis=0)
-        return np.array(x_splits).reshape(self.n_splits, 1, -1)
-
     def getitem_default(self, idx):
         x, y = self.X[idx, :], self.Y[idx, :]
-
-        if self.split_size is not None:
-            x_splits = self.crop(x, self.n_splits, self.split_size)
-            return x_splits, y
 
         x = x[None, :]  # adds a channel dim
 
@@ -135,7 +112,6 @@ class AugUCRDataset(Dataset):
         kind: str,
         dataset_importer: UCRDatasetImporter,
         augmenter: Augmenter,
-        split_size: int,
         **kwargs,
     ):
         """
@@ -148,12 +124,6 @@ class AugUCRDataset(Dataset):
         super().__init__()
         self.kind = kind
         self.augmenter = augmenter
-
-        self.split_size = split_size
-        if split_size is not None:
-            self.n_splits = dataset_importer.X_train.shape[1] // split_size
-        else:
-            self.n_splits = 0
 
         if kind == "train":
             self.X, self.Y = dataset_importer.X_train, dataset_importer.Y_train
@@ -175,27 +145,10 @@ class AugUCRDataset(Dataset):
             new_xs.append(x.astype(np.float32))
         return new_xs[0] if (len(xs) == 1) else new_xs
 
-    def crop(self, x):
-        # Crop the data, in a random window
-        if np.random.rand() < 0.5:
-            x = x[: self.split_size * self.n_splits].astype(np.float32)
-        else:
-            start_idx = x.shape[0] - self.split_size * self.n_splits
-            x = x[start_idx:].astype(np.float32)
-
-        x_splits = np.array_split(x, self.split_size, axis=0)
-        return np.array(x_splits).reshape(self.n_splits, 1, -1)
-
     def getitem_default(self, idx):
         x, y = self.X[idx, :], self.Y[idx, :]
 
         x_augmented = self.augmenter.augment(x).numpy()
-
-        if self.split_size is not None:
-            x_splits = self.crop(x)
-            x_augmented_splits = self.crop(x_augmented)
-
-            return x_splits, x_augmented_splits, y
 
         x = x.copy().reshape(1, -1)  # (1 x F)
         x_augmented = x_augmented.copy().reshape(1, -1)

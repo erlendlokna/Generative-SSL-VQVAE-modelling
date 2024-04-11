@@ -56,8 +56,6 @@ def run_experiments():
     config["trainer_params"]["max_epochs"]["stage1"] = STAGE1_EPOCHS
     config["trainer_params"]["max_epochs"]["stage2"] = STAGE2_EPOCHS
     # Only reconstruct original view:
-    config["VQVAE"]["recon_augmented_view_scale"] = 0.0
-    config["VQVAE"]["recon_original_view_scale"] = 1.0
 
     batch_size_stage1 = config["dataset"]["batch_sizes"]["stage1"]
     batch_size_stage2 = config["dataset"]["batch_sizes"]["stage2"]

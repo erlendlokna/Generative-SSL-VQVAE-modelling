@@ -42,7 +42,6 @@ def build_data_pipeline(
     kind: str,
     augment: bool = False,
     shuffle_train: bool = True,
-    split_size: int = None,
 ) -> DataLoader:
     """
     :param config:
@@ -60,9 +59,7 @@ def build_data_pipeline(
     if augment:
         augmenter = Augmenter(**config["augmentations"])
 
-        dataset = AugUCRDataset(
-            kind, dataset_importer, augmenter, split_size=split_size
-        )
+        dataset = AugUCRDataset(kind, dataset_importer, augmenter)
     else:
         dataset = UCRDataset(kind, dataset_importer)
 
