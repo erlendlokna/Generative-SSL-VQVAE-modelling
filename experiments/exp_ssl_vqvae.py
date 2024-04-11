@@ -61,7 +61,7 @@ class Exp_SSL_VQVAE(ExpBase):
             num_tokens=config["VQVAE"]["codebook"]["size"],
             n_fft=config["VQVAE"]["n_fft"],
         )
-
+        self.aug_recon_rate = config["VQVAE"]["aug_recon_rate"]
         self.config = config
         self.T_max = config["trainer_params"]["max_epochs"]["stage1"] * (
             np.ceil(n_train_samples / config["dataset"]["batch_sizes"]["stage1"]) + 1
@@ -107,88 +107,64 @@ class Exp_SSL_VQVAE(ExpBase):
             ssl_name=config["SSL"]["stage1_method"],
         )  # 2*dim because we global average pool and global max pool
 
-        self.recon_aug_view_scale = config["VQVAE"]["recon_augmented_view_scale"]
-        self.recon_orig_view_scale = config["VQVAE"]["recon_original_view_scale"]
-
     def forward(self, batch, training=True):
         # One branch or two branch forward pass
         # using one branch if validation step.
 
         if training:
-            (x, x_aug_view), y = batch  # x and augmented view
+            (x_orig, x_aug), y = batch  # x and augmented view
         else:
-            x, y = batch
+            x_orig, y = batch
 
         recons_loss = {
             "orig.time": 0.0,
             "orig.timefreq": 0.0,
-            "aug.time": 0.0,
-            "aug.timefreq": 0.0,
         }
 
         vq_loss = None
         perplexity = 0.0
-        codebook_decorr_loss = 0.0
         SSL_loss = 0.0
 
-        C = x.shape[1]
+        C = x_orig.shape[1]
 
         # --- Processing original view ---
-        u = time_to_timefreq(x, self.n_fft, C)
+        u_orig = time_to_timefreq(x_orig, self.n_fft, C)
 
         if not self.decoder.is_upsample_size_updated:
-            self.decoder.register_upsample_size(torch.IntTensor(np.array(u.shape[2:])))
+            self.decoder.register_upsample_size(
+                torch.IntTensor(np.array(u_orig.shape[2:]))
+            )
 
-        z = self.encoder(u)
-        z_q, indices, vq_loss, perplexity = quantize(z, self.vq_model)
+        z_orig = self.encoder(u_orig)
+
+        # --- Processing alternate view with SSL ---
+        if training:
+            # Same process for alternate view
+            u_aug = time_to_timefreq(x_aug, self.n_fft, C)  # STFT
+            z_aug = self.encoder(u_aug)  # Encode
+
+            # --- SSL part ---
+            # projecting both views
+            z_aug_projected = self.SSL_method(z_aug)
+            z_orig_projected = self.SSL_method(z_orig)
+            # calculating similarity loss in projected space:
+            SSL_loss = self.SSL_method.loss_function(z_orig_projected, z_aug_projected)
+
+        # Choose between original and augmented view for reconstruction
+        recon_aug = np.random.uniform(0, 1) < 0.05
+        x = x_aug if recon_aug else x_orig
+        u = u_aug if recon_aug else u_orig
+        z = z_aug if recon_aug else z_orig
+
+        z_q, _, vq_loss, perplexity = quantize(z, self.vq_model)
         uhat = self.decoder(z_q)
         xhat = timefreq_to_time(uhat, self.n_fft, C)
         x, xhat = shape_match(x, xhat)
 
         # losses
-        recons_loss["orig.time"] = F.mse_loss(x, xhat) * self.recon_orig_view_scale
-        recons_loss["orig.timefreq"] = F.mse_loss(u, uhat) * self.recon_orig_view_scale
-
-        # --- Processing alternate view with SSL ---
-        if training:
-            # Same process for alternate view
-            u_aug_view = time_to_timefreq(x_aug_view, self.n_fft, C)  # STFT
-            z_aug_view = self.encoder(u_aug_view)  # Encode
-
-            # --- SSL part ---
-            # projecting both views
-            z_aug_view_projected = self.SSL_method(z_aug_view)
-            z_projected = self.SSL_method(z)
-            # calculating similarity loss in projected space:
-            SSL_loss = self.SSL_method.loss_function(z_projected, z_aug_view_projected)
-
-            if self.recon_aug_view_scale > 0.0:
-                with torch.no_grad():
-                    self.vq_model.training = False
-                    self.vq_model._codebook.training = False  # freeze codebook
-                    zq_aug_view, _, _, _ = quantize(z_aug_view, self.vq_model)
-                    self.vq_model._codebook.training = True
-                    self.vq_model.training = True
-
-                    uhat_aug_view = self.decoder(zq_aug_view)  # Decode
-                    xhat_aug_view = timefreq_to_time(uhat_aug_view, self.n_fft, C)
-                    # Make sure x and xhat have the same length. Padding may occur in the ISTFT and STFT process:
-                    x_aug_view, xhat_aug_view = shape_match(x_aug_view, xhat_aug_view)
-
-                # Stop gradient for the alternate view
-                recons_loss["aug.time"] = (
-                    F.mse_loss(x_aug_view.detach(), xhat_aug_view.detach())
-                    * self.recon_aug_view_scale
-                )
-                recons_loss["aug.timefreq"] = (
-                    F.mse_loss(u_aug_view.detach(), uhat_aug_view.detach())
-                    * self.recon_aug_view_scale
-                )
-
-        # plot both views and reconstruction
-        r = np.random.uniform(0, 1)
-
-        if r < 0.01 and training:
+        recons_loss["orig.time"] = F.mse_loss(x, xhat)
+        recons_loss["orig.timefreq"] = F.mse_loss(u, uhat)
+        if np.random.uniform(0, 1) < 0.01 and training:
             b = np.random.randint(0, x.shape[0])
             c = np.random.randint(0, x.shape[1])
             fig, ax = plt.subplots()
@@ -197,18 +173,19 @@ class Exp_SSL_VQVAE(ExpBase):
             ax.plot(
                 x[b, c].cpu(),
                 label=f"original",
-                c="gray",
-                alpha=1,
+                c="blue",
+                alpha=0.5,
             )
             ax.plot(
-                x_aug_view[b, c].cpu(),
+                x_aug[b, c].cpu(),
                 label=f"augmented view",
                 c="gray",
-                alpha=0.3,
+                alpha=0.5,
             )
+            text = "augmented" if recon_aug else "original"
             ax.plot(
                 xhat[b, c].detach().cpu(),
-                label=f"reconstruction of original view",
+                label=f"reconstruction of {text} view",
             )
             ax.set_title("x")
             ax.set_ylim(-5, 5)
@@ -224,12 +201,8 @@ class Exp_SSL_VQVAE(ExpBase):
         recons_loss, vq_loss, perplexity, SSL_loss = self.forward(x, training=True)
         # --- Total Loss ---
         loss = (
-            (
-                recons_loss["orig.time"]
-                + recons_loss["orig.timefreq"]
-                + recons_loss["aug.time"]
-                + recons_loss["aug.timefreq"]
-            )
+            recons_loss["orig.time"]
+            + recons_loss["orig.timefreq"]
             + vq_loss["loss"]
             + SSL_loss
         )
@@ -245,11 +218,9 @@ class Exp_SSL_VQVAE(ExpBase):
             #'commit_loss': vq_loss, #?
             "perplexity": perplexity,
             self.SSL_method.name + "_loss": SSL_loss,
-            "recons_loss.time": recons_loss["orig.time"] + recons_loss["aug.time"],
-            "recons_loss.timefreq": recons_loss["orig.timefreq"]
-            + recons_loss["aug.timefreq"],
+            "recons_loss.time": recons_loss["orig.time"],
+            "recons_loss.timefreq": recons_loss["orig.timefreq"],
             "recons_loss.orig": recons_loss["orig.time"] + recons_loss["orig.timefreq"],
-            "recons_loss.aug": recons_loss["aug.time"] + recons_loss["aug.timefreq"],
             "orthogonal_reg_loss": vq_loss["orthogonal_reg_loss"],
             "vq_loss": vq_loss["loss"],
         }
@@ -272,13 +243,10 @@ class Exp_SSL_VQVAE(ExpBase):
             #'commit_loss': vq_loss, #?
             "val_perplexity": perplexity,
             "val_" + self.SSL_method.name + "_loss": SSL_loss,
-            "val_recons_loss.time": recons_loss["orig.time"] + recons_loss["aug.time"],
-            "val_recons_loss.timefreq": recons_loss["orig.timefreq"]
-            + recons_loss["aug.timefreq"],
+            "val_recons_loss.time": recons_loss["orig.time"],
+            "val_recons_loss.timefreq": recons_loss["orig.timefreq"],
             "val_recons_loss.orig": recons_loss["orig.time"]
             + recons_loss["orig.timefreq"],
-            "val_recons_loss.aug": recons_loss["aug.time"]
-            + recons_loss["aug.timefreq"],
         }
 
         detach_the_unnecessary(val_loss_hist)
@@ -310,46 +278,6 @@ class Exp_SSL_VQVAE(ExpBase):
         )
 
         return {"optimizer": opt, "lr_scheduler": CosineAnnealingLR(opt, self.T_max)}
-
-    def test_step(self, batch, batch_idx):
-        x = batch
-        recons_loss, vq_loss, perplexity, SSL_loss, codebook_decorr_loss = self.forward(
-            x, training=False
-        )
-
-        # only VQVAE loss
-        loss = (
-            (
-                recons_loss["orig.time"]
-                + recons_loss["orig.timefreq"]
-                + recons_loss["aug.time"]
-                + recons_loss["aug.timefreq"]
-            )
-            + vq_loss["loss"]
-            + SSL_loss
-            + codebook_decorr_loss
-        )
-
-        # log
-        val_loss_hist = {
-            "val_loss": loss,
-            #'commit_loss': vq_loss, #?
-            "val_perplexity": perplexity,
-            self.SSL_method.name + "_loss": SSL_loss,
-            "val_codebook_decorrelation_loss": codebook_decorr_loss,
-            "val_recons_loss.time": recons_loss["orig.time"] + recons_loss["aug.time"],
-            "val_recons_loss.timefreq": recons_loss["orig.timefreq"]
-            + recons_loss["aug.timefreq"],
-            "val_recons_loss.orig": recons_loss["orig.time"]
-            + recons_loss["orig.timefreq"],
-            "val_recons_loss.aug": recons_loss["aug.time"]
-            + recons_loss["aug.timefreq"],
-        }
-
-        detach_the_unnecessary(val_loss_hist)
-        wandb.log(val_loss_hist)
-
-        return val_loss_hist
 
     @torch.no_grad()
     def on_train_epoch_end(self):

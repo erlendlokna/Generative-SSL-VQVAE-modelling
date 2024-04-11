@@ -119,6 +119,7 @@ class Exp_BYOL_VQVAE(ExpBase):
         downsampled_rate = compute_downsample_rate(
             input_length, self.n_fft, downsampled_width
         )
+        self.aug_recon_rate = config["VQVAE"]["aug_recon_rate"]
 
         # encoder
         self.encoder = VQVAEEncoder(
@@ -191,17 +192,13 @@ class Exp_BYOL_VQVAE(ExpBase):
         # using one branch if validation step.
 
         if training:
-            (x, x_aug_view), y = batch  # x and augmented view
+            (x_orig, x_aug), y = batch  # x and augmented view
         else:
-            x, y = batch
+            x_orig, y = batch
 
         recons_loss = {
             "orig.time": 0.0,
-            "orig.target.time": 0.0,
             "orig.timefreq": 0.0,
-            "orig.target.timefreq": 0.0,
-            "aug.time": 0.0,
-            "aug.timefreq": 0.0,
         }
 
         vq_loss = None
@@ -209,58 +206,45 @@ class Exp_BYOL_VQVAE(ExpBase):
         codebook_decorr_loss = 0.0
         reg_loss = 0.0
 
-        C = x.shape[1]
+        C = x_orig.shape[1]
 
         # --- Processing original view ---
-        u = time_to_timefreq(x, self.n_fft, C)
+        u_orig = time_to_timefreq(x_orig, self.n_fft, C)
 
         if not self.decoder.is_upsample_size_updated:
-            self.decoder.register_upsample_size(torch.IntTensor(np.array(u.shape[2:])))
+            self.decoder.register_upsample_size(
+                torch.IntTensor(np.array(u_orig.shape[2:]))
+            )
 
-        z_orig_view, z_proj_orig_view = self.online_network(u)
-
-        z_q, indices, vq_loss, perplexity = quantize(z_orig_view, self.vq_model)
-        uhat = self.decoder(z_q)
-        xhat = timefreq_to_time(uhat, self.n_fft, C)
-        x, xhat = shape_match(x, xhat)
-
-        # losses
-        recons_loss["orig.time"] = F.mse_loss(x, xhat)
-        recons_loss["orig.timefreq"] = F.mse_loss(u, uhat)
+        z_orig, z_orig_proj = self.online_network(u_orig)
 
         # --- Processing alternate view with SSL ---
         if training:
-            u_aug_view = time_to_timefreq(x_aug_view, self.n_fft, C)  # STFT
+            u_aug = time_to_timefreq(x_aug, self.n_fft, C)  # STFT
 
-            z_aug_target, z_aug_projected = self.online_network(u_aug_view)
+            z_aug, z_aug_proj = self.online_network(u_aug)
 
-            orig_prediction = self.predictor(z_proj_orig_view)
-            aug_prediction = self.predictor(z_aug_projected)
+            orig_prediction = self.predictor(z_orig_proj)
+            aug_prediction = self.predictor(z_aug_proj)
 
             with torch.no_grad():
-                z_orig_view, z_target_orig_projected = self.target_network(u)  # Encode
-                _, z_target_aug_projected = self.target_network(u_aug_view)  # Encode
-
-                self.vq_model.training = False
-                self.vq_model._codebook.training = False  # freeze codebook
-                zq_target, _, _, _ = quantize(z_orig_view, self.vq_model)
-                self.vq_model._codebook.training = True
-                self.vq_model.training = True
-
-                uhat_target = self.decoder(zq_target)
-                xhat_target_view = timefreq_to_time(uhat_target, self.n_fft, C)
-                x, xhat_target = shape_match(x_aug_view, xhat_target_view)
-
-            recons_loss["orig.target.time"] = F.mse_loss(x, xhat_target).detach()
-            recons_loss["orig.target.timefreq"] = F.mse_loss(u, uhat_target).detach()
+                _, z_target_orig_projected = self.target_network(u_orig)  # Encode
+                _, z_target_aug_projected = self.target_network(u_aug)  # Encode
 
             reg_loss += self.regression_loss(orig_prediction, z_target_orig_projected)
             reg_loss += self.regression_loss(aug_prediction, z_target_aug_projected)
             reg_loss = reg_loss.mean()
 
-            uhat_target = self.decoder(zq_target)
-            xhat_target_view = timefreq_to_time(uhat_target, self.n_fft, C)
-            x, xhat_target = shape_match(x_aug_view, xhat_target_view)
+        # Choose between original and augmented view for reconstruction
+        recon_aug = np.random.uniform(0, 1) < self.aug_recon_rate
+        x = x_aug if recon_aug else x_orig
+        u = u_aug if recon_aug else u_orig
+        z = z_aug if recon_aug else z_orig
+
+        z_q, _, vq_loss, perplexity = quantize(z, self.vq_model)
+        uhat = self.decoder(z_q)
+        xhat = timefreq_to_time(uhat, self.n_fft, C)
+        x, xhat = shape_match(x, xhat)
 
         # plot both views and reconstruction
         r = np.random.uniform(0, 1)
@@ -274,18 +258,21 @@ class Exp_BYOL_VQVAE(ExpBase):
             ax.plot(
                 x[b, c].cpu(),
                 label=f"original",
-                c="gray",
-                alpha=1,
+                c="blue",
+                alpha=0.5,
             )
             ax.plot(
-                x_aug_view[b, c].cpu(),
+                x_aug[b, c].cpu(),
                 label=f"augmented view",
                 c="gray",
-                alpha=0.3,
+                alpha=0.5,
             )
+            text = "augmented" if recon_aug else "original"
+
             ax.plot(
                 xhat[b, c].detach().cpu(),
-                label=f"reconstruction of original view",
+                c="red",
+                label=f"reconstruction of {text} view",
             )
             ax.set_title("x")
             ax.set_ylim(-5, 5)
@@ -304,19 +291,19 @@ class Exp_BYOL_VQVAE(ExpBase):
         # forward:
         recons_loss, vq_loss, perplexity, reg_loss = self.forward(x, training=True)
         # --- Total Loss ---
-        recon_loss = 1.0 / 2 * (
-            recons_loss["orig.time"] + recons_loss["orig.target.time"]
-        ) + 1.0 / 2 * (
-            recons_loss["orig.timefreq"] + recons_loss["orig.target.timefreq"]
-        )
-        loss = recon_loss + vq_loss["loss"] + reg_loss
 
-        # lr scheduler
-        sch = self.lr_schedulers()
-        sch.step()
+        loss = (
+            recons_loss["orig.time"]
+            + recons_loss["orig.timefreq"]
+            + vq_loss["loss"]
+            + reg_loss
+        )
 
         self.manual_backward(loss)
         opt.step()
+
+        sch = self.lr_schedulers()
+        sch.step()
 
         # update target encoder
         self._update_target_network_parameters()
@@ -328,11 +315,9 @@ class Exp_BYOL_VQVAE(ExpBase):
             #'commit_loss': vq_loss, #?
             "perplexity": perplexity,
             "byol_regression_loss": reg_loss,
-            "recons_loss.time": recons_loss["orig.time"] + recons_loss["aug.time"],
-            "recons_loss.timefreq": recons_loss["orig.timefreq"]
-            + recons_loss["aug.timefreq"],
+            "recons_loss.time": recons_loss["orig.time"],
+            "recons_loss.timefreq": recons_loss["orig.timefreq"],
             "recons_loss.orig": recons_loss["orig.time"] + recons_loss["orig.timefreq"],
-            "recons_loss.aug": recons_loss["aug.time"] + recons_loss["aug.timefreq"],
             "orthogonal_reg_loss": vq_loss["orthogonal_reg_loss"],
             "vq_loss": vq_loss["loss"],
         }
@@ -354,13 +339,10 @@ class Exp_BYOL_VQVAE(ExpBase):
             "val_loss": loss,
             #'commit_loss': vq_loss, #?
             "val_perplexity": perplexity,
-            "val_recons_loss.time": recons_loss["orig.time"] + recons_loss["aug.time"],
-            "val_recons_loss.timefreq": recons_loss["orig.timefreq"]
-            + recons_loss["aug.timefreq"],
+            "val_recons_loss.time": recons_loss["orig.time"],
+            "val_recons_loss.timefreq": recons_loss["orig.timefreq"],
             "val_recons_loss.orig": recons_loss["orig.time"]
             + recons_loss["orig.timefreq"],
-            "val_recons_loss.aug": recons_loss["aug.time"]
-            + recons_loss["aug.timefreq"],
         }
 
         detach_the_unnecessary(val_loss_hist)
@@ -372,7 +354,7 @@ class Exp_BYOL_VQVAE(ExpBase):
         opt = torch.optim.AdamW(
             [
                 {
-                    "params": self.encoder.parameters(),
+                    "params": self.online_network.parameters(),
                     "lr": self.config["exp_params"]["LR"],
                 },
                 {
