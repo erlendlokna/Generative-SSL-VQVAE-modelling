@@ -7,7 +7,7 @@ from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.loggers import WandbLogger
 from torch.utils.data import DataLoader
 
-from experiments.exp_ssl_vqvae import Exp_SSL_VQVAE
+from experiments.exp_siam_vqvae import Exp_SIAM_VQVAE
 from experiments.exp_byol_vqvae import Exp_BYOL_VQVAE
 
 from preprocessing.preprocess_ucr import UCRDatasetImporter
@@ -67,7 +67,7 @@ def train_ssl_vqvae(
             test_data_loader=test_data_loader,
         )
     else:
-        train_exp = Exp_SSL_VQVAE(
+        train_exp = Exp_SIAM_VQVAE(
             input_length,
             config=config,
             n_train_samples=len(train_data_loader.dataset),

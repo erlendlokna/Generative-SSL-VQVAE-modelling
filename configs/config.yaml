@@ -16,7 +16,7 @@ trainer_params:
   gpus:
     - 0
   max_epochs:
-    stage1: 1
+    stage1: 1000
     stage2: 100 #1000 #1000 #10000
 
 encoder:
@@ -59,13 +59,13 @@ MaskGIT:
     p_unconditional: 0.2
 
   # For the BYOL MaskGIT
-  moving_average_decay: 0.99
+  moving_average_decay: 0.9
 
 class_guidance:
   guidance_scale: 1.
 
 SSL:
-  stage1_method: "byol" # "barlowtwins", "vicreg", "vibcreg" or empty
+  stage1_method: "vibcreg" # "barlowtwins", "vicreg", "vibcreg" or empty
   stage2_method: "" #"barlowtwins" "vicreg", "vibcreg"
 
   # Hyperparameters for SSL methods.

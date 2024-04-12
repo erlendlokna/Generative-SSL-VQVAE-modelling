@@ -12,7 +12,7 @@ from models.ssl.barlowtwins import BarlowTwins
 from models.ssl.vibcreg import VIbCReg
 
 
-def assign_ssl_method(proj_in, config, ssl_name):
+def assign_siam_ssl_method(proj_in, config, ssl_name):
     method_mapping = {
         "barlowtwins": BarlowTwins,
         "vicreg": VICReg,

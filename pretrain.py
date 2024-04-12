@@ -6,7 +6,6 @@ from argparse import ArgumentParser
 
 from trainers.train_vqvae import train_vqvae
 from trainers.train_ssl_vqvae import train_ssl_vqvae
-from trainers.train_byol_maskgit import train_byol_maskgit
 from trainers.train_maskgit import train_maskgit
 import torch
 
@@ -106,14 +105,6 @@ if __name__ == "__main__":
             torch_seed=0,
         )
 
-    elif args.model == "byolmaskgit":
-        train_byol_maskgit(
-            config,
-            train_data_loader,
-            test_data_loader,
-            do_validate=True,
-            gpu_device_idx=args.gpu_device_idx,
-        )
     elif args.model == "maskgit":
         train_maskgit(
             config,

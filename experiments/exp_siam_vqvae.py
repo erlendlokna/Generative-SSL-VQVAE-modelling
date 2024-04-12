@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 
 from models.stage1.encoder_decoder import VQVAEEncoder, VQVAEDecoder
 from models.stage1.vq import VectorQuantize
-from models.ssl import assign_ssl_method
+from models.ssl import assign_siam_ssl_method
 
 from utils import (
     compute_downsample_rate,
@@ -30,7 +30,7 @@ from umap import UMAP
 import seaborn as sns
 
 
-class Exp_SSL_VQVAE(ExpBase):
+class Exp_SIAM_VQVAE(ExpBase):
     """
     VQVAE with a two branch encoder structure. Incorporates an additional Non contrastiv SSL objective for the encoder.
     ---
@@ -101,7 +101,7 @@ class Exp_SSL_VQVAE(ExpBase):
 
         # latent SSL objective
         dim = config["encoder"]["dim"]
-        self.SSL_method = assign_ssl_method(
+        self.siam_ssl_method = assign_siam_ssl_method(
             proj_in=2 * dim,
             config=config,
             ssl_name=config["SSL"]["stage1_method"],
@@ -116,14 +116,13 @@ class Exp_SSL_VQVAE(ExpBase):
         else:
             x_orig, y = batch
 
-        recons_loss = {
-            "orig.time": 0.0,
-            "orig.timefreq": 0.0,
-        }
-
         vq_loss = None
         perplexity = 0.0
-        SSL_loss = 0.0
+        ssl_loss = 0.0
+        recons_loss = {
+            "time": 0.0,
+            "timefreq": 0.0,
+        }
 
         C = x_orig.shape[1]
 
@@ -145,10 +144,12 @@ class Exp_SSL_VQVAE(ExpBase):
 
             # --- SSL part ---
             # projecting both views
-            z_aug_projected = self.SSL_method(z_aug)
-            z_orig_projected = self.SSL_method(z_orig)
+            z_aug_projected = self.siam_ssl_method(z_aug)
+            z_orig_projected = self.siam_ssl_method(z_orig)
             # calculating similarity loss in projected space:
-            SSL_loss = self.SSL_method.loss_function(z_orig_projected, z_aug_projected)
+            ssl_loss = self.siam_ssl_method.loss_function(
+                z_orig_projected, z_aug_projected
+            )
 
         # Choose between original and augmented view for reconstruction
         recon_aug = np.random.uniform(0, 1) < 0.05
@@ -162,8 +163,8 @@ class Exp_SSL_VQVAE(ExpBase):
         x, xhat = shape_match(x, xhat)
 
         # losses
-        recons_loss["orig.time"] = F.mse_loss(x, xhat)
-        recons_loss["orig.timefreq"] = F.mse_loss(u, uhat)
+        recons_loss["time"] = F.mse_loss(x, xhat)
+        recons_loss["timefreq"] = F.mse_loss(u, uhat)
         if np.random.uniform(0, 1) < 0.01 and training:
             b = np.random.randint(0, x.shape[0])
             c = np.random.randint(0, x.shape[1])
@@ -193,18 +194,15 @@ class Exp_SSL_VQVAE(ExpBase):
             wandb.log({"Reconstruction": wandb.Image(plt)})
             plt.close()
 
-        return recons_loss, vq_loss, perplexity, SSL_loss
+        return recons_loss, vq_loss, perplexity, ssl_loss
 
     def training_step(self, batch, batch_idx):
         x = batch
         # forward:
-        recons_loss, vq_loss, perplexity, SSL_loss = self.forward(x, training=True)
+        recons_loss, vq_loss, perplexity, ssl_loss = self.forward(x, training=True)
         # --- Total Loss ---
         loss = (
-            recons_loss["orig.time"]
-            + recons_loss["orig.timefreq"]
-            + vq_loss["loss"]
-            + SSL_loss
+            recons_loss["time"] + recons_loss["timefreq"] + vq_loss["loss"] + ssl_loss
         )
 
         # lr scheduler
@@ -217,10 +215,10 @@ class Exp_SSL_VQVAE(ExpBase):
             "commit_loss": vq_loss["commit_loss"],
             #'commit_loss': vq_loss, #?
             "perplexity": perplexity,
-            self.SSL_method.name + "_loss": SSL_loss,
-            "recons_loss.time": recons_loss["orig.time"],
-            "recons_loss.timefreq": recons_loss["orig.timefreq"],
-            "recons_loss.orig": recons_loss["orig.time"] + recons_loss["orig.timefreq"],
+            self.siam_ssl_method.name + "_loss": ssl_loss,
+            "recons_loss.time": recons_loss["time"],
+            "recons_loss.timefreq": recons_loss["timefreq"],
+            "recons_loss": recons_loss["time"] + recons_loss["timefreq"],
             "orthogonal_reg_loss": vq_loss["orthogonal_reg_loss"],
             "vq_loss": vq_loss["loss"],
         }
@@ -232,21 +230,19 @@ class Exp_SSL_VQVAE(ExpBase):
 
     def validation_step(self, batch, batch_idx):
         x = batch
-        recons_loss, vq_loss, perplexity, SSL_loss = self.forward(x, training=False)
+        recons_loss, vq_loss, perplexity, _ = self.forward(x, training=False)
 
         # only VQVAE loss
-        loss = recons_loss["orig.time"] + recons_loss["orig.timefreq"] + vq_loss["loss"]
+        loss = recons_loss["time"] + recons_loss["timefreq"] + vq_loss["loss"]
 
         # log
         val_loss_hist = {
             "val_loss": loss,
-            #'commit_loss': vq_loss, #?
+            "val_recon_loss": recons_loss["time"] + recons_loss["timefreq"],
             "val_perplexity": perplexity,
-            "val_" + self.SSL_method.name + "_loss": SSL_loss,
-            "val_recons_loss.time": recons_loss["orig.time"],
-            "val_recons_loss.timefreq": recons_loss["orig.timefreq"],
-            "val_recons_loss.orig": recons_loss["orig.time"]
-            + recons_loss["orig.timefreq"],
+            "val_recons_loss.time": recons_loss["time"],
+            "val_recons_loss.timefreq": recons_loss["timefreq"],
+            "val_recons_loss.orig": recons_loss["time"] + recons_loss["timefreq"],
         }
 
         detach_the_unnecessary(val_loss_hist)
@@ -270,7 +266,7 @@ class Exp_SSL_VQVAE(ExpBase):
                     "lr": self.config["exp_params"]["LR"],
                 },
                 {
-                    "params": self.SSL_method.parameters(),
+                    "params": self.siam_ssl_method.parameters(),
                     "lr": self.config["exp_params"]["LR"],
                 },
             ],
