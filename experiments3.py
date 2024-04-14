@@ -80,7 +80,7 @@ def run_experiments():
                 "epochs": STAGE1_EPOCHS,
                 "train_fn": train_vqvae if exp == "" else train_ssl_vqvae,
             }
-            for aug_recon in [0.0, 0.05]
+            for aug_recon in [0.0, 0.05, 0.1]
             for ortho_reg in [0, 10]
             for exp in STAGE1_EXPS
         ]
