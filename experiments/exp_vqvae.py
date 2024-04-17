@@ -151,7 +151,7 @@ class Exp_VQVAE(ExpBase):
             "perplexity.orig": perplexity,
             "recons_loss.orig.time": recons_loss["orig.time"],
             "recons_loss.orig.timefreq": recons_loss["orig.timefreq"],
-            "recons_loss": recons_loss["orig.time"] + recons_loss["orig.timefreq"],
+            "recons_loss.orig": recons_loss["orig.time"] + recons_loss["orig.timefreq"],
             "orthogonal_reg_loss.orig": vq_loss["orthogonal_reg_loss"],
             "vq_loss.orig": vq_loss["loss"],
         }
