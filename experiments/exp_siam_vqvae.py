@@ -122,7 +122,7 @@ class Exp_SIAM_VQVAE(ExpBase):
             "orig": None,
             "aug": None,
         }
-        perplexity = {"orig": 0.0, "aug": 0.0}
+        perplexities = {"orig": 0.0, "aug": 0.0}
         recons_loss = {
             "orig.time": 0.0,
             "orig.timefreq": 0.0,
@@ -143,7 +143,7 @@ class Exp_SIAM_VQVAE(ExpBase):
             )
 
         z_orig = self.encoder(u_orig)
-        z_q_orig, _, vq_loss_orig, perplexity = quantize(
+        z_q_orig, _, vq_loss_orig, perplexity_orig = quantize(
             z_orig, self.vq_model, ema_update=True
         )
         # reconstructing original view
@@ -154,13 +154,16 @@ class Exp_SIAM_VQVAE(ExpBase):
         recons_loss["orig.time"] = F.mse_loss(x_orig, xhat_orig)
         recons_loss["orig.timefreq"] = F.mse_loss(u_orig, uhat_orig)
         vq_losses["orig"] = vq_loss_orig
+        perplexities["orig"] = perplexity_orig
 
         # --- Processing augmented view with SSL ---
         if training:
             # encoding and quantizing augmented view
             u_aug = time_to_timefreq(x_aug, self.n_fft, C)  # STFT
             z_aug = self.encoder(u_aug)  # Encode
-            z_q_aug, _, vq_loss_aug, _ = quantize(z_aug, self.vq_model, ema_update=True)
+            z_q_aug, _, vq_loss_aug, perplexity_aug = quantize(
+                z_aug, self.vq_model, ema_update=True
+            )
             # reconstructing augmented view
             uhat_aug = self.decoder(z_q_aug)
             xhat_aug = timefreq_to_time(uhat_aug, self.n_fft, C)
@@ -169,6 +172,7 @@ class Exp_SIAM_VQVAE(ExpBase):
             recons_loss["aug.time"] = F.mse_loss(x_aug, xhat_aug)
             recons_loss["aug.timefreq"] = F.mse_loss(u_aug, uhat_aug)
             vq_losses["aug"] = vq_loss_aug
+            perplexities["aug"] = perplexity_aug
 
             # --- SSL part ---
             # projecting quantized latents
@@ -192,7 +196,7 @@ class Exp_SIAM_VQVAE(ExpBase):
             )
             ax[0].plot(
                 xhat_orig[b, c].detach().cpu(),
-                label=f"reconstructed view",
+                label=f"reconstruction",
                 c="blue",
                 alpha=0.6,
             )
@@ -204,7 +208,6 @@ class Exp_SIAM_VQVAE(ExpBase):
             )
             ax[1].plot(
                 xhat_aug[b, c].detach().cpu(),
-                label=f"reconstructed augmented view",
                 c="blue",
                 alpha=0.6,
             )
@@ -218,12 +221,12 @@ class Exp_SIAM_VQVAE(ExpBase):
             wandb.log({"Reconstruction": wandb.Image(plt)})
             plt.close()
 
-        return recons_loss, vq_losses, perplexity, ssl_loss
+        return recons_loss, vq_losses, perplexities, ssl_loss
 
     def training_step(self, batch, batch_idx):
         x = batch
         # forward: Calculating losses
-        recons_loss, vq_losses, perplexity, ssl_loss = self.forward(x, training=True)
+        recons_loss, vq_losses, perplexities, ssl_loss = self.forward(x, training=True)
         # --- Total Loss ---
         loss = (
             (
@@ -247,18 +250,21 @@ class Exp_SIAM_VQVAE(ExpBase):
         # log
         loss_hist = {
             "loss": loss,
-            "commit_loss": vq_losses["orig"]["commit_loss"],
-            #'commit_loss': vq_loss, #?
-            "perplexity": perplexity,
             self.siam_ssl_method.name + "_loss": ssl_loss,
             "recons_loss.orig.time": recons_loss["orig.time"],
             "recons_loss.orig.timefreq": recons_loss["orig.timefreq"],
-            "recons_loss": recons_loss["orig.time"] + recons_loss["orig.timefreq"],
-            "orthogonal_reg_loss": vq_losses["orig"]["orthogonal_reg_loss"],
-            "vq_loss": vq_losses["orig"]["loss"],
+            "recons_loss.orig": recons_loss["orig.time"] + recons_loss["orig.timefreq"],
+            "orthogonal_reg_loss.orig": vq_losses["orig"]["orthogonal_reg_loss"],
+            "ortogonal_reg_loss.aug": vq_losses["aug"]["orthogonal_reg_loss"],
             "recons_loss.aug.time": recons_loss["aug.time"],
             "recons_loss.aug.timefreq": recons_loss["aug.timefreq"],
             "recons_loss.aug": recons_loss["aug.time"] + recons_loss["aug.timefreq"],
+            "vq_loss.orig": vq_losses["orig"]["loss"],
+            "vq_loss.aug": vq_losses["aug"]["loss"],
+            "commit_loss.orig": vq_losses["orig"]["commit_loss"],
+            "commit_loss.aug": vq_losses["aug"]["commit_loss"],
+            "perplexity.orig": perplexities["orig"],
+            "perplexity.aug": perplexities["aug"],
         }
 
         wandb.log(loss_hist)
@@ -268,7 +274,7 @@ class Exp_SIAM_VQVAE(ExpBase):
 
     def validation_step(self, batch, batch_idx):
         x = batch
-        recons_loss, vq_losses, perplexity, _ = self.forward(x, training=False)
+        recons_loss, vq_losses, perplexities, _ = self.forward(x, training=False)
 
         # only VQVAE loss
         loss = (
@@ -281,11 +287,9 @@ class Exp_SIAM_VQVAE(ExpBase):
         val_loss_hist = {
             "val_loss": loss,
             "val_recon_loss": recons_loss["orig.time"] + recons_loss["orig.timefreq"],
-            "val_perplexity": perplexity,
+            "val_perplexity": perplexities["orig"],
             "val_recons_loss.time": recons_loss["orig.time"],
             "val_recons_loss.timefreq": recons_loss["orig.timefreq"],
-            "val_recons_loss.orig": recons_loss["orig.time"]
-            + recons_loss["orig.timefreq"],
         }
 
         detach_the_unnecessary(val_loss_hist)

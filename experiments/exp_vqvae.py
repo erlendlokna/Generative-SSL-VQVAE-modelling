@@ -89,13 +89,6 @@ class Exp_VQVAE(ExpBase):
             config["decoder"]["dropout_rate"],
         )
 
-        if config["VQVAE"]["perceptual_loss_weight"]:
-            self.fcn = load_pretrained_FCN(config["dataset"]["dataset_name"]).to(
-                self.device
-            )
-            self.fcn.eval()
-            freeze(self.fcn)
-
     def forward(self, batch):
         x, y = batch
 
@@ -115,23 +108,13 @@ class Exp_VQVAE(ExpBase):
             self.decoder.register_upsample_size(torch.IntTensor(np.array(u.shape[2:])))
 
         z = self.encoder(u)
-
-        z_q, indices, vq_loss, perplexity = quantize(z, self.vq_model)
-
+        z_q, _, vq_loss, perplexity = quantize(z, self.vq_model)
         uhat = self.decoder(z_q)
         xhat = timefreq_to_time(uhat, self.n_fft, C, original_length=x.shape[-1])
-        # Make sure x and xhat have the same length. Padding may occur in the ISTFT and STFT process
         x, xhat = shape_match(x, xhat)
 
         recons_loss["orig.time"] = F.mse_loss(x, xhat)
         recons_loss["orig.timefreq"] = F.mse_loss(u, uhat)
-        # perplexity = perplexity #Updated above during quantize
-        # vq_losses['LF'] = vq_loss_l #Updated above during quantize
-
-        if self.config["VQVAE"]["perceptual_loss_weight"]:
-            z_fcn = self.fcn(x.float(), return_feature_vector=True).detach()
-            zhat_fcn = self.fcn(xhat.float(), return_feature_vector=True)
-            recons_loss["perceptual"] = F.mse_loss(z_fcn, zhat_fcn)
 
         # plot `x` and `xhat`
         r = np.random.rand()
@@ -165,12 +148,12 @@ class Exp_VQVAE(ExpBase):
             "loss": loss,
             "commit_loss": vq_loss["commit_loss"],
             #'commit_loss': vq_loss, #?
-            "perplexity": perplexity,
-            "recons_loss.time": recons_loss["orig.time"],
-            "recons_loss.timefreq": recons_loss["orig.timefreq"],
+            "perplexity.orig": perplexity,
+            "recons_loss.orig.time": recons_loss["orig.time"],
+            "recons_loss.orig.timefreq": recons_loss["orig.timefreq"],
             "recons_loss.orig": recons_loss["orig.time"] + recons_loss["orig.timefreq"],
-            "orthogonal_reg_loss": vq_loss["orthogonal_reg_loss"],
-            "vq_loss": vq_loss["loss"],
+            "orthogonal_reg_loss.orig": vq_loss["orthogonal_reg_loss"],
+            "vq_loss.orig": vq_loss["loss"],
         }
 
         wandb.log(loss_hist)
@@ -191,8 +174,7 @@ class Exp_VQVAE(ExpBase):
             "val_perplexity": perplexity,
             "val_recons_loss.time": recons_loss["orig.time"],
             "val_recons_loss.timefreq": recons_loss["orig.timefreq"],
-            "val_recons_loss.orig": recons_loss["orig.time"]
-            + recons_loss["orig.timefreq"],
+            "val_recons_loss": recons_loss["orig.time"] + recons_loss["orig.timefreq"],
         }
 
         detach_the_unnecessary(val_loss_hist)

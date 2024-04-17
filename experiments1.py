@@ -12,37 +12,37 @@ from trainers.train_maskgit import train_maskgit
 import torch
 
 # Wandb logging information
-STAGE1_PROJECT_NAME = "S1-Aug-Slice&Shuffle"
-STAGE2_PROJECT_NAME = "S2-vibcreg-adjust"
+STAGE1_PROJECT_NAME = "S1-Prophecy-Run"
+STAGE2_PROJECT_NAME = "S2-Prophecy-Run"
 STAGE2_MINI_PROJECT_NAME = "Final-Stage2-Mini-Gaussian"
 # Stage 1 experiments to run
-STAGE1_EXPS = ["byol", "vibcreg", "barlowtwins"]  # empty string means regular VQVAE
+STAGE1_EXPS = ["", "vibcreg", "barlowtwins"]  # empty string means regular VQVAE
 # Datasets to run experiments on
 UCR_SUBSET = [
     # "ElectricDevices",
     # "StarLightCurves",
     # "Wafer",
     # "ECG5000",
-    # "TwoPatterns",
+    "TwoPatterns",
     "FordA",
-    "UWaveGestureLibraryAll",
-    "FordB",
-    "ChlorineConcentration",
-    "ShapesAll",
+    # "UWaveGestureLibraryAll",
+    # "FordB",
+    # "ChlorineConcentration",
+    # "ShapesAll",
 ]
 # NUmber of runs per experiment
 NUM_RUNS_PER = 1
 # Controls
 RUN_STAGE1 = True
-RUN_STAGE2 = False
+RUN_STAGE2 = True
 RUN_MINI_STAGE2 = False
-SEED = 2
+SEED = 0
 # Epochs:
-STAGE1_EPOCHS = 1  # 1000
+STAGE1_EPOCHS = 1000  # 1000
 STAGE2_EPOCHS = 1000
 STAGE2_MINI_EPOCHS = 100
 
-STAGE1_AUGS = ["slice_and_shuffle"]
+STAGE1_AUGS = ["window_warp", "amplitude_resize"]
 
 
 # Main experiment function
@@ -73,12 +73,10 @@ def run_experiments():
                 "stage1_exp": exp,
                 "augmented_data": (exp != ""),
                 "orthogonal_reg_weight": ortho_reg,
-                "aug_recon_rate": aug_recon,
                 "project_name": STAGE1_PROJECT_NAME,
                 "epochs": STAGE1_EPOCHS,
                 "train_fn": train_vqvae if exp == "" else train_ssl_vqvae,
             }
-            for aug_recon in [0.0, 0.05, 0.1]
             for ortho_reg in [0, 10]
             for exp in STAGE1_EXPS
         ]
@@ -149,13 +147,10 @@ def run_experiments():
                 stage1_exp = experiment["stage1_exp"]
                 stage1_exp = f"{stage1_exp}-" if stage1_exp != "" else ""
                 decorr = "decorr-" if experiment["orthogonal_reg_weight"] > 0 else ""
-                recon_rate = experiment["aug_recon_rate"]
-                print(f"Recon rate: {recon_rate}")
-                aug_recons = f"aug_recons_{recon_rate}-" if recon_rate > 0 else ""
                 stage = "stage1" if experiment["stage"] == 1 else "stage2"
                 mini = "-mini" if experiment["epochs"] == STAGE2_MINI_EPOCHS else ""
                 seed = f"-seed{SEED}"
-                run_name = "".join([decorr, aug_recons, stage1_exp, stage, mini, seed])
+                run_name = "".join([decorr, stage1_exp, stage, mini, seed])
 
                 # Set correct data loader
                 if experiment["stage"] == 1:
