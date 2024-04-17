@@ -72,17 +72,17 @@ def timefreq_to_time(x, n_fft: int, C: int, original_length=None):
     return x
 
 
-def quantize(z, vq_model, transpose_channel_length_axes=False):
+def quantize(z, vq_model, transpose_channel_length_axes=False, ema_update=True):
     input_dim = len(z.shape) - 2
     if input_dim == 2:
         h, w = z.shape[2:]
         z = rearrange(z, "b c h w -> b (h w) c")
-        z_q, indices, vq_loss, perplexity = vq_model(z)
+        z_q, indices, vq_loss, perplexity = vq_model(z, ema_update=ema_update)
         z_q = rearrange(z_q, "b (h w) c -> b c h w", h=h, w=w)
     elif input_dim == 1:
         if transpose_channel_length_axes:
             z = rearrange(z, "b c l -> b (l) c")
-        z_q, indices, vq_loss, perplexity = vq_model(z)
+        z_q, indices, vq_loss, perplexity = vq_model(z, ema_update=ema_update)
         if transpose_channel_length_axes:
             z_q = rearrange(z_q, "b (l) c -> b c l")
     else:

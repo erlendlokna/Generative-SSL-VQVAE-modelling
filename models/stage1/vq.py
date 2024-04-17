@@ -201,7 +201,7 @@ class EuclideanCodebook(nn.Module):
         self.replace(batch_samples, mask=expired_codes)
 
     @autocast(enabled=False)
-    def forward(self, x):
+    def forward(self, x, ema_update=True):
         shape, dtype = x.shape, x.dtype
         flatten = rearrange(x, "... d -> (...) d")
 
@@ -224,7 +224,7 @@ class EuclideanCodebook(nn.Module):
         embed_ind = embed_ind.view(*shape[:-1])
         quantize = F.embedding(embed_ind, self.embed)
 
-        if self.training:
+        if self.training and ema_update:
             cluster_size = embed_onehot.sum(0)
             self.all_reduce_fn(cluster_size)
 
@@ -321,7 +321,7 @@ class VectorQuantize(nn.Module):
     def codebook(self):
         return self._codebook.embed
 
-    def forward(self, x):
+    def forward(self, x, ema_update=True):
         """
         x: (B, N, D)
         """
@@ -351,7 +351,7 @@ class VectorQuantize(nn.Module):
         if is_multiheaded:
             x = rearrange(x, "b n (h d) -> (b h) n d", h=heads)
 
-        quantize, embed_ind = self._codebook(x)
+        quantize, embed_ind = self._codebook(x, ema_update=ema_update)
 
         if self.training:
             quantize = (

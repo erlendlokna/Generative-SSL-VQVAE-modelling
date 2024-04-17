@@ -80,7 +80,7 @@ if __name__ == "__main__":
         kind="test",
     )
 
-    wandb_project = "codebook analysis"
+    wandb_project = "SSL-on-zq"
 
     if args.model == "vqvae":
         train_vqvae(

@@ -112,21 +112,29 @@ class Exp_SIAM_VQVAE(ExpBase):
         # using one branch if validation step.
 
         if training:
-            (x_orig, x_aug), y = batch  # x and augmented view
+            # grabbing original and augmented view
+            (x_orig, x_aug), y = batch
         else:
+            # validation scenario: no augmentation
             x_orig, y = batch
-
-        vq_loss = None
-        perplexity = 0.0
-        ssl_loss = 0.0
-        recons_loss = {
-            "time": 0.0,
-            "timefreq": 0.0,
+        # initialise losses
+        vq_losses = {
+            "orig": None,
+            "aug": None,
         }
+        perplexity = {"orig": 0.0, "aug": 0.0}
+        recons_loss = {
+            "orig.time": 0.0,
+            "orig.timefreq": 0.0,
+            "aug.time": 0.0,
+            "aug.timefreq": 0.0,
+        }
+        ssl_loss = 0.0
 
         C = x_orig.shape[1]
 
         # --- Processing original view ---
+        # encoding and quantizing original view
         u_orig = time_to_timefreq(x_orig, self.n_fft, C)
 
         if not self.decoder.is_upsample_size_updated:
@@ -135,74 +143,101 @@ class Exp_SIAM_VQVAE(ExpBase):
             )
 
         z_orig = self.encoder(u_orig)
+        z_q_orig, _, vq_loss_orig, perplexity = quantize(
+            z_orig, self.vq_model, ema_update=True
+        )
+        # reconstructing original view
+        uhat_orig = self.decoder(z_q_orig)
+        xhat_orig = timefreq_to_time(uhat_orig, self.n_fft, C)
+        x_orig, xhat_orig = shape_match(x_orig, xhat_orig)
+        # saving losses
+        recons_loss["orig.time"] = F.mse_loss(x_orig, xhat_orig)
+        recons_loss["orig.timefreq"] = F.mse_loss(u_orig, uhat_orig)
+        vq_losses["orig"] = vq_loss_orig
 
-        # --- Processing alternate view with SSL ---
+        # --- Processing augmented view with SSL ---
         if training:
-            # Same process for alternate view
+            # encoding and quantizing augmented view
             u_aug = time_to_timefreq(x_aug, self.n_fft, C)  # STFT
             z_aug = self.encoder(u_aug)  # Encode
+            z_q_aug, _, vq_loss_aug, _ = quantize(z_aug, self.vq_model, ema_update=True)
+            # reconstructing augmented view
+            uhat_aug = self.decoder(z_q_aug)
+            xhat_aug = timefreq_to_time(uhat_aug, self.n_fft, C)
+            x_aug, xhat_aug = shape_match(x_aug, xhat_aug)
+            # saving losses
+            recons_loss["aug.time"] = F.mse_loss(x_aug, xhat_aug)
+            recons_loss["aug.timefreq"] = F.mse_loss(u_aug, uhat_aug)
+            vq_losses["aug"] = vq_loss_aug
 
             # --- SSL part ---
-            # projecting both views
-            z_aug_projected = self.siam_ssl_method(z_aug)
-            z_orig_projected = self.siam_ssl_method(z_orig)
+            # projecting quantized latents
+            z_q_aug_proj = self.siam_ssl_method(z_q_aug)
+            z_q_orig_proj = self.siam_ssl_method(z_q_orig)
             # calculating similarity loss in projected space:
-            ssl_loss = self.siam_ssl_method.loss_function(
-                z_orig_projected, z_aug_projected
-            )
+            ssl_loss = self.siam_ssl_method.loss_function(z_q_orig_proj, z_q_aug_proj)
 
-        # Choose between original and augmented view for reconstruction
-        recon_aug = np.random.uniform(0, 1) < 0.05
-        x = x_aug if (recon_aug and training) else x_orig
-        u = u_aug if (recon_aug and training) else u_orig
-        z = z_aug if (recon_aug and training) else z_orig
-
-        z_q, _, vq_loss, perplexity = quantize(z, self.vq_model)
-        uhat = self.decoder(z_q)
-        xhat = timefreq_to_time(uhat, self.n_fft, C)
-        x, xhat = shape_match(x, xhat)
-
-        # losses
-        recons_loss["time"] = F.mse_loss(x, xhat)
-        recons_loss["timefreq"] = F.mse_loss(u, uhat)
+        # plotting
         if np.random.uniform(0, 1) < 0.01 and training:
-            b = np.random.randint(0, x.shape[0])
-            c = np.random.randint(0, x.shape[1])
-            fig, ax = plt.subplots()
+            b = np.random.randint(0, x_orig.shape[0])
+            c = np.random.randint(0, x_orig.shape[1])
+            fig, ax = plt.subplots(1, 2)
             plt.suptitle(f"ep_{self.current_epoch}")
 
-            ax.plot(
-                x[b, c].cpu(),
-                label=f"original",
-                c="blue",
-                alpha=0.5,
+            ax[0].plot(
+                x_orig[b, c].cpu(),
+                label=f"original view",
+                c="grey",
+                alpha=1.0,
             )
-            ax.plot(
+            ax[0].plot(
+                xhat_orig[b, c].detach().cpu(),
+                label=f"reconstructed view",
+                c="blue",
+                alpha=0.6,
+            )
+            ax[1].plot(
                 x_aug[b, c].cpu(),
                 label=f"augmented view",
-                c="gray",
-                alpha=0.5,
+                c="grey",
+                alpha=1.0,
             )
-            text = "augmented" if recon_aug else "original"
-            ax.plot(
-                xhat[b, c].detach().cpu(),
-                label=f"reconstruction of {text} view",
+            ax[1].plot(
+                xhat_aug[b, c].detach().cpu(),
+                label=f"reconstructed augmented view",
+                c="blue",
+                alpha=0.6,
             )
-            ax.set_title("x")
-            ax.set_ylim(-5, 5)
+
+            ax[0].set_title("Original View")
+            ax[1].set_title("Augmented View")
+            ax[0].set_ylim(-5, 5)
+            ax[1].set_ylim(-5, 5)
+
             fig.legend()
             wandb.log({"Reconstruction": wandb.Image(plt)})
             plt.close()
 
-        return recons_loss, vq_loss, perplexity, ssl_loss
+        return recons_loss, vq_losses, perplexity, ssl_loss
 
     def training_step(self, batch, batch_idx):
         x = batch
-        # forward:
-        recons_loss, vq_loss, perplexity, ssl_loss = self.forward(x, training=True)
+        # forward: Calculating losses
+        recons_loss, vq_losses, perplexity, ssl_loss = self.forward(x, training=True)
         # --- Total Loss ---
         loss = (
-            recons_loss["time"] + recons_loss["timefreq"] + vq_loss["loss"] + ssl_loss
+            (
+                recons_loss["orig.time"]
+                + recons_loss["orig.timefreq"]
+                + vq_losses["orig"]["loss"]
+            )  # original view
+            + self.aug_recon_rate
+            * (
+                recons_loss["aug.time"]
+                + recons_loss["aug.timefreq"]
+                + vq_losses["aug"]["loss"]
+            )  # augmented view
+            + ssl_loss  # Self supervision
         )
 
         # lr scheduler
@@ -212,15 +247,18 @@ class Exp_SIAM_VQVAE(ExpBase):
         # log
         loss_hist = {
             "loss": loss,
-            "commit_loss": vq_loss["commit_loss"],
+            "commit_loss": vq_losses["orig"]["commit_loss"],
             #'commit_loss': vq_loss, #?
             "perplexity": perplexity,
             self.siam_ssl_method.name + "_loss": ssl_loss,
-            "recons_loss.time": recons_loss["time"],
-            "recons_loss.timefreq": recons_loss["timefreq"],
-            "recons_loss": recons_loss["time"] + recons_loss["timefreq"],
-            "orthogonal_reg_loss": vq_loss["orthogonal_reg_loss"],
-            "vq_loss": vq_loss["loss"],
+            "recons_loss.orig.time": recons_loss["orig.time"],
+            "recons_loss.orig.timefreq": recons_loss["orig.timefreq"],
+            "recons_loss": recons_loss["orig.time"] + recons_loss["orig.timefreq"],
+            "orthogonal_reg_loss": vq_losses["orig"]["orthogonal_reg_loss"],
+            "vq_loss": vq_losses["orig"]["loss"],
+            "recons_loss.aug.time": recons_loss["aug.time"],
+            "recons_loss.aug.timefreq": recons_loss["aug.timefreq"],
+            "recons_loss.aug": recons_loss["aug.time"] + recons_loss["aug.timefreq"],
         }
 
         wandb.log(loss_hist)
@@ -230,19 +268,24 @@ class Exp_SIAM_VQVAE(ExpBase):
 
     def validation_step(self, batch, batch_idx):
         x = batch
-        recons_loss, vq_loss, perplexity, _ = self.forward(x, training=False)
+        recons_loss, vq_losses, perplexity, _ = self.forward(x, training=False)
 
         # only VQVAE loss
-        loss = recons_loss["time"] + recons_loss["timefreq"] + vq_loss["loss"]
+        loss = (
+            recons_loss["orig.time"]
+            + recons_loss["orig.timefreq"]
+            + vq_losses["orig"]["loss"]
+        )
 
         # log
         val_loss_hist = {
             "val_loss": loss,
-            "val_recon_loss": recons_loss["time"] + recons_loss["timefreq"],
+            "val_recon_loss": recons_loss["orig.time"] + recons_loss["orig.timefreq"],
             "val_perplexity": perplexity,
-            "val_recons_loss.time": recons_loss["time"],
-            "val_recons_loss.timefreq": recons_loss["timefreq"],
-            "val_recons_loss.orig": recons_loss["time"] + recons_loss["timefreq"],
+            "val_recons_loss.time": recons_loss["orig.time"],
+            "val_recons_loss.timefreq": recons_loss["orig.timefreq"],
+            "val_recons_loss.orig": recons_loss["orig.time"]
+            + recons_loss["orig.timefreq"],
         }
 
         detach_the_unnecessary(val_loss_hist)
@@ -278,9 +321,9 @@ class Exp_SIAM_VQVAE(ExpBase):
     @torch.no_grad()
     def on_train_epoch_end(self):
         current_epoch = self.current_epoch + 1  # 1-indexed
-        last_or_200th = current_epoch == (self.last_epoch) or (current_epoch % 200 == 0)
+        log_extra = current_epoch == (self.last_epoch) or (current_epoch % 200 == 0)
 
-        if current_epoch % self.probe_test_per == 0 or last_or_200th:
+        if current_epoch % self.probe_test_per == 0 or log_extra:
             epoch = self.current_epoch
             print("Downstream evaluation..")
             # Extracting data through encoder and vq_model. And counting tokens
@@ -294,7 +337,7 @@ class Exp_SIAM_VQVAE(ExpBase):
             print("Probe evaluation..")
             self.downstream_eval.log_probes(z_tr, z_te, y_tr, y_te)
             # Codebook evaluation
-            if last_or_200th:
+            if log_extra:
                 codebook = self.vq_model.codebook
                 print("Codebook correlation and similarity..")
                 self.downstream_eval.log_codebook_similarity(
