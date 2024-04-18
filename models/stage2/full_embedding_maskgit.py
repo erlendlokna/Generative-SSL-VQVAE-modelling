@@ -176,19 +176,13 @@ class Full_Embedding_MaskGIT(nn.Module):
         # randomly sample `t`
         t = np.random.uniform(0, 1)
 
-        n_masks = math.floor(self.gamma(t) * z_q.shape[1])
+        n_masks = math.floor(self.gamma(t) * s.shape[1])
+        rand = torch.rand(s.shape, device=device)  # (b n)
+        mask = torch.zeros(s.shape, dtype=torch.bool, device=device)
+        mask.scatter_(dim=1, index=rand.topk(n_masks, dim=1).indices, value=True)
 
-        mask_indices = (
-            torch.rand(z_q.shape[0], z_q.shape[1], device=device)
-            .topk(n_masks, dim=1)
-            .indices
-        )
-
-        mask = torch.zeros(z_q.shape[0], z_q.shape[1], dtype=torch.bool, device=device)
-        mask.scatter_(1, mask_indices, True)
-
-        # Apply masks
-        z_q_M = torch.where(mask.unsqueeze(-1), self.mask_emb.unsqueeze(0), z_q)
+        mask_emb = self.mask_emb.view(1, 1, -1)  # reshape to (1, 1, c)
+        z_q_M = torch.where(mask.unsqueeze(-1), mask_emb, z_q)
 
         # prediction
         logits = self.transformer(
