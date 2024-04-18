@@ -13,7 +13,10 @@ import torch
 from einops import repeat, rearrange
 from typing import Callable
 
-from models.stage2.transformers import BidirectionalTransformer
+from models.stage2.transformers import (
+    BidirectionalTransformer,
+    FullEmbedBidirectionalTransformer,
+)
 from models.stage1.encoder_decoder import VQVAEEncoder, VQVAEDecoder
 from models.stage1.vq import VectorQuantize
 
@@ -28,26 +31,7 @@ from utils import (
 )
 
 
-class EMA:
-    def __init__(self, beta):
-        super().__init__()
-        self.beta = beta
-
-    def update_average(self, old, new):
-        if old is None:
-            return new
-        return old * self.beta + (1 - self.beta) * new
-
-
-def update_moving_average(ema_updater, ma_model, current_model):
-    for current_params, ma_params in zip(
-        current_model.parameters(), ma_model.parameters()
-    ):
-        old_weight, up_weight = ma_params.data, current_params.data
-        ma_params.data = ema_updater.update_average(old_weight, up_weight)
-
-
-class BYOLMaskGIT(nn.Module):
+class Full_Embedding_MaskGIT(nn.Module):
     """
     references:
         1. https://github.com/ML4ITS/TimeVQVAE/blob/main/generators/maskgit.py'
@@ -62,7 +46,6 @@ class BYOLMaskGIT(nn.Module):
         T: int,
         config: dict,
         n_classes: int,
-        moving_average_decay=0.99,
         **kwargs,
     ):
         super().__init__()
@@ -70,8 +53,7 @@ class BYOLMaskGIT(nn.Module):
         self.T = T
         self.config = config
         self.n_classes = n_classes
-        print("moving_average_decay:", moving_average_decay)
-        self.mask_token_ids = config["VQVAE"]["codebook"]["size"]
+
         self.gamma = self.gamma_func("cosine")
         dataset_name = config["dataset"]["dataset_name"]
 
@@ -135,30 +117,24 @@ class BYOLMaskGIT(nn.Module):
         # pretrained discrete tokens
         embed = nn.Parameter(copy.deepcopy(self.vq_model._codebook.embed))
 
-        self.online_transformer = BidirectionalTransformer(
-            self.num_tokens,
+        self.transformer = FullEmbedBidirectionalTransformer(
+            self.H_prime * self.W_prime,
             config["VQVAE"]["codebook"]["size"],
             config["VQVAE"]["codebook"]["dim"],
             **config["MaskGIT"]["prior_model"],
             n_classes=n_classes,
             pretrained_tok_emb=embed,
-            online=True,
         )
-
-        self.target_transformer = BidirectionalTransformer(
-            self.num_tokens,
-            config["VQVAE"]["codebook"]["size"],
-            config["VQVAE"]["codebook"]["dim"],
-            **config["MaskGIT"]["prior_model"],
-            n_classes=n_classes,
-            pretrained_tok_emb=embed,
-            online=False,
-        )
-
-        self.target_ema_updater = EMA(moving_average_decay)
 
         # stochastic codebook sampling
         self.vq_model._codebook.sample_codebook_temp = stochastic_sampling
+
+        self.mask_token_ids = config["VQVAE"]["codebook"]["size"]
+        self.mask_emb = nn.Parameter(
+            torch.rand(
+                dim,
+            )
+        )
 
     def load(self, model, dirname, fname):
         """
@@ -193,44 +169,34 @@ class BYOLMaskGIT(nn.Module):
         straight from [https://github.com/dome272/MaskGIT-pytorch/blob/main/transformer.py]
         """
         device = x.device
-        _, s = self.encode_to_z_q(x, self.encoder, self.vq_model)  # (b n)
+        z_q, s = self.encode_to_z_q(x, self.encoder, self.vq_model)  # (b n)
+
+        z_q = rearrange(z_q, "b c h w -> b (h w) c")  # (b, h*w, c)
 
         # randomly sample `t`
-        mask_token_ids = self.mask_token_ids
-        s_M_online = self.create_masks(s, mask_token_ids)  # (b n)
-        s_M_target = self.create_masks(s, mask_token_ids)  # (b n)
-
-        logits, online_representation = self.online_transformer(
-            s_M_online.detach(), class_condition=y, return_representation=True
-        )  # (b n codebook_size)
-
-        with torch.no_grad():
-            target_representation = self.target_transformer(
-                s_M_target.detach(), class_condition=y
-            )
-
-        target = s  # (b n)
-
-        return logits, target, online_representation, target_representation
-
-    def create_masks(self, s, mask_token_ids):
         t = np.random.uniform(0, 1)
 
-        n_masks = math.floor(self.gamma(t) * s.shape[1])
-        rand = torch.rand(s.shape, device=s.device)  # (b n)
-        mask = torch.zeros(s.shape, dtype=torch.bool, device=s.device)
-        mask.scatter_(dim=1, index=rand.topk(n_masks, dim=1).indices, value=True)
+        n_masks = math.floor(self.gamma(t) * z_q.shape[1])
 
-        masked_indices = mask_token_ids * torch.ones_like(s, device=s.device)  # (b n)
-
-        s_M = mask * s + (~mask) * masked_indices  # (b n)
-
-        return s_M
-
-    def update_moving_average(self):
-        update_moving_average(
-            self.target_ema_updater, self.target_transformer, self.online_transformer
+        mask_indices = (
+            torch.rand(z_q.shape[0], z_q.shape[1], device=device)
+            .topk(n_masks, dim=1)
+            .indices
         )
+
+        mask = torch.zeros(z_q.shape[0], z_q.shape[1], dtype=torch.bool, device=device)
+        mask.scatter_(1, mask_indices, True)
+
+        # Apply masks
+        z_q_M = torch.where(mask.unsqueeze(-1), self.mask_emb.unsqueeze(0), z_q)
+
+        # prediction
+        logits = self.transformer(
+            z_q_M.detach(), class_condition=y
+        )  # (b n codebook_size)
+        target = s  # (b n)
+
+        return logits, target
 
     def gamma_func(self, mode="cosine"):
         if mode == "linear":
@@ -244,13 +210,31 @@ class BYOLMaskGIT(nn.Module):
         else:
             raise NotImplementedError
 
-    def create_input_tokens_normal(self, num, num_tokens, mask_token_ids, device):
+    def create_input_tokens_normal(self, num, num_embeddings, device):
         """
         returns masked tokens
         """
+
+        blank_embeddings = self.mask_emb.repeat(num_embeddings * num)
+        blank_embeddings = blank_embeddings.view(
+            num, num_embeddings, self.mask_emb.shape[0]
+        )
+
+        return blank_embeddings.to(torch.float32)
+
+    def create_input_tokens_normal(self, num, num_tokens, num_embeddings, device):
+        """
+        returns masked tokens
+        """
+
         blank_tokens = torch.ones((num, num_tokens), device=device)
-        masked_tokens = mask_token_ids * blank_tokens
-        return masked_tokens.to(torch.int64)
+        masked_tokens = self.mask_token_ids * blank_tokens
+
+        masked_embeddings = self.mask_emb.repeat(num_embeddings * num)
+        masked_embeddings = masked_embeddings.view(
+            num, num_embeddings, self.mask_emb.shape[0]
+        )
+        return masked_tokens.to(torch.int64), masked_embeddings.to(torch.float32)
 
     def mask_by_random_topk(self, mask_len, probs, temperature=1.0, device="cpu"):
         """
@@ -286,35 +270,44 @@ class BYOLMaskGIT(nn.Module):
     def sample_good(
         self,
         s: torch.Tensor,
+        z_q: torch.Tensor,
         unknown_number_in_the_beginning,
         class_condition: Union[torch.Tensor, None],
         guidance_scale: float,
         gamma: Callable,
         device,
+        stats: bool = False,
     ):
+
         for t in range(self.T):
-            logits = self.online_transformer(
-                s, class_condition=class_condition
+            logits = self.transformer(
+                z_q, class_condition=class_condition
             )  # (b n codebook_size) == (b n K)
+
             if isinstance(class_condition, torch.Tensor):
-                logits_null = self.online_transformer(s, class_condition=None)
+                logits_null = self.transformer(z_q, class_condition=None)
                 logits = logits_null + guidance_scale * (logits - logits_null)
 
             sampled_ids = torch.distributions.categorical.Categorical(
                 logits=logits
             ).sample()  # (b n)
-            unknown_map = (
-                s == self.mask_token_ids
-            )  # which tokens need to be sampled; (b n)
-            sampled_ids = torch.where(
-                unknown_map, sampled_ids, s
+
+            sampled_embs = self.indicies_to_z_q(sampled_ids, self.vq_model)
+
+            unknown_map = z_q == self.mask_emb  # which tokens need to be sampled; (b n)
+
+            sampled_embs = torch.where(
+                unknown_map, sampled_embs, z_q
             )  # keep the previously-sampled tokens; (b n)
+
+            sampled_ids = torch.where(unknown_map, sampled_ids, s)
 
             # create masking according to `t`
             ratio = 1.0 * (t + 1) / self.T  # just a percentage e.g. 1 / 12
             mask_ratio = gamma(ratio)
 
             probs = F.softmax(logits, dim=-1)  # convert logits into probs; (b n K)
+
             selected_probs = torch.gather(
                 probs, dim=-1, index=sampled_ids.unsqueeze(-1)
             ).squeeze()  # get probability for the selected tokens; p(\hat{s}(t) | \hat{s}_M(t)); (b n)
@@ -340,9 +333,13 @@ class BYOLMaskGIT(nn.Module):
             )
 
             # Masks tokens with lower confidence.
+            z_q = torch.where(masking.unsqueeze(-1), self.mask_emb, sampled_embs)
             s = torch.where(masking, self.mask_token_ids, sampled_ids)  # (b n)
 
-        return s
+        return s, z_q
+
+    def indicies_to_z_q(self, s, vq_model):
+        return vq_model.project_out(F.embedding(s, vq_model._codebook.embed))
 
     @torch.no_grad()
     def iterative_decoding(
@@ -352,18 +349,22 @@ class BYOLMaskGIT(nn.Module):
         class_index=None,
         device="cpu",
         guidance_scale: float = 1.0,
+        stats: bool = False,
     ):
         """
         It performs the iterative decoding and samples token indices.
         :param num: number of samples
         :return: sampled token indices
         """
-        s = self.create_input_tokens_normal(
-            num, self.num_tokens, self.mask_token_ids, device
+        s, z_q = self.create_input_tokens_normal(
+            num,
+            self.num_tokens,
+            self.encoder.H_prime * self.encoder.W_prime,
+            device,
         )  # (b n)
 
         unknown_number_in_the_beginning = torch.sum(
-            s == self.mask_token_ids, dim=-1
+            z_q == self.mask_emb.unsqueeze(0), dim=-1
         )  # (b,)
 
         gamma = self.gamma_func(mode)
@@ -373,20 +374,18 @@ class BYOLMaskGIT(nn.Module):
             else None
         )  # (b 1)
 
-        s = self.sample_good(
+        s, z_q = self.sample_good(
             s,
+            z_q,
             unknown_number_in_the_beginning,
             class_condition,
             guidance_scale,
             gamma,
             device,
         )
+        return s, z_q
 
-        return s
-
-    def decode_token_ind_to_timeseries(
-        self, s: torch.Tensor, return_representations: bool = False
-    ):
+    def decode_token_ind_to_timeseries(self, z_q, return_representations: bool = False):
         #
         # It takes token embedding indices and decodes them to time series.
         #:param s: token embedding index
@@ -394,19 +393,12 @@ class BYOLMaskGIT(nn.Module):
         #:return:
         #
 
-        vq_model = self.vq_model
         decoder = self.decoder
 
-        quantize = F.embedding(s, vq_model._codebook.embed)  # (b n d)
-        quantize = vq_model.project_out(quantize)  # (b n c)
+        z_q = rearrange(z_q, "b n c -> b c n")
+        z_q = rearrange(z_q, "b c (h w) -> b c h w", h=self.H_prime, w=self.W_prime)
 
-        quantize = rearrange(quantize, "b n c -> b c n")  # (b c n) == (b c (h w))
-
-        quantize = rearrange(
-            quantize, "b c (h w) -> b c h w", h=self.H_prime, w=self.W_prime
-        )
-
-        uhat = decoder(quantize)
+        uhat = decoder(z_q)
 
         xhat = timefreq_to_time(
             uhat, self.n_fft, self.config["dataset"]["in_channels"]
@@ -428,7 +420,7 @@ class BYOLMaskGIT(nn.Module):
         """
 
         mask_token_ids = self.mask_token_ids
-        transformer = self.online_transformer
+        transformer = self.transformer
         vq_model = self.vq_model
 
         # compute the confidence scores for s_T
@@ -532,7 +524,7 @@ class BYOLMaskGIT(nn.Module):
         device,
     ):
         mask_token_ids = self.mask_token_ids
-        transformer = self.online_transformer
+        transformer = self.transformer
         vq_model = self.vq_model
         choice_temperature = self.choice_temperature
 

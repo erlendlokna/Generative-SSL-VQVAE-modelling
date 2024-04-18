@@ -101,7 +101,7 @@ def model_filename(config, model_type):
     assert model_type in model_types, "Non valid model type"
 
     stage1_ssl_method = config["SSL"]["stage1_method"]
-    stage2_ssl_method = config["SSL"]["stage2_method"]
+    seed = config["seed"]
 
     decorr = config["VQVAE"]["orthogonal_reg_weight"] > 0
 
@@ -114,6 +114,8 @@ def model_filename(config, model_type):
         filename_parts.append(f"{stage1_ssl_method}_")
 
     filename_parts.append(model_type)
+
+    # filename_parts.append(f"-seed-{seed}")
 
     return "".join(part for part in filename_parts if part)
 

@@ -104,8 +104,6 @@ class BidirectionalTransformer(nn.Module):
         self.ln = nn.LayerNorm(in_dim, eps=1e-12)
         self.drop = nn.Dropout(p=0.0)
 
-        self.online = online
-
     def class_embedding(
         self, class_condition: Union[None, torch.Tensor], batch_size: int, device
     ):
@@ -138,7 +136,6 @@ class BidirectionalTransformer(nn.Module):
         self,
         embed_ind,
         class_condition: Union[None, torch.Tensor] = None,
-        return_representation=False,
     ):
         device = embed_ind.device
 
@@ -155,31 +152,20 @@ class BidirectionalTransformer(nn.Module):
         embed = torch.cat((cls_emb, embed), dim=1)  # (b, 1+n, dim)
         embed = self.blocks(embed)  # (b, 1+n, dim)
 
-        representation = embed[:, 1:, :]  # (b, n, dim)
+        embed = self.Token_Prediction(embed)[:, 1:, :]  # (b, n, dim)
 
-        if self.online:
-            embed = self.Token_Prediction(embed)[:, 1:, :]  # (b, n, dim)
+        logits = (
+            torch.matmul(embed, self.tok_emb.weight.T) + self.bias
+        )  # (b, n, codebook_size+1)
+        logits = logits[:, :, :-1]
 
-            logits = (
-                torch.matmul(embed, self.tok_emb.weight.T) + self.bias
-            )  # (b, n, codebook_size+1)
-            logits = logits[
-                :, :, :-1
-            ]  # remove the logit for the mask token.  # (b, n, codebook_size)
-
-            if return_representation:
-                return logits, representation
-            else:
-                return logits
-        else:
-            # Target BERT
-            return representation
+        return logits
 
 
-class PoolBidirectionalTransformer(nn.Module):
+class FullEmbedBidirectionalTransformer(nn.Module):
     def __init__(
         self,
-        num_tokens: int,
+        num_embeddings: int,
         codebook_size: int,
         embed_dim: int,
         hidden_dim: int,
@@ -211,31 +197,22 @@ class PoolBidirectionalTransformer(nn.Module):
         """
         super().__init__()
 
-        self.num_tokens = num_tokens
+        self.num_embeddings = num_embeddings
         self.n_classes = n_classes
         self.p_unconditional = p_unconditional
         in_dim = embed_dim
         out_dim = embed_dim
 
-        # token embeddings
-        self.tok_emb = nn.Embedding(
-            codebook_size + 1, embed_dim
-        )  # `+1` is for mask-token
-        load_pretrained_tok_emb(
-            pretrained_tok_emb, self.tok_emb, freeze_pretrained_tokens
-        )
-
-        # transformer
-        self.pos_emb = nn.Embedding(self.num_tokens + 1, in_dim)
+        self.pos_emb = nn.Embedding(self.num_embeddings + 1, in_dim)
 
         self.class_condition_emb = nn.Embedding(
             n_classes + 1, in_dim
         )  # `+1` is for no-condition
 
-        self.transformer_blocks = ContinuousTransformerWrapper(
+        self.blocks = ContinuousTransformerWrapper(
             dim_in=in_dim,
             dim_out=in_dim,
-            max_seq_len=self.num_tokens + 1,
+            max_seq_len=self.num_embeddings + 1,
             attn_layers=TFEncoder(
                 dim=hidden_dim,
                 depth=n_layers,
@@ -250,9 +227,11 @@ class PoolBidirectionalTransformer(nn.Module):
                 nn.Linear(in_features=in_dim, out_features=out_dim),
                 nn.GELU(),
                 nn.LayerNorm(out_dim, eps=1e-12),
+                nn.Linear(in_features=out_dim, out_features=codebook_size, bias=True),
+                # nn.GELU(),
             ]
         )
-        self.bias = nn.Parameter(torch.zeros(self.num_tokens, codebook_size + 1))
+        # self.bias = nn.Parameter(torch.zeros(self.num_tokens, codebook_size + 1))
         self.ln = nn.LayerNorm(in_dim, eps=1e-12)
         self.drop = nn.Dropout(p=0.0)
 
@@ -285,51 +264,27 @@ class PoolBidirectionalTransformer(nn.Module):
         return cls_emb
 
     def forward(
-        self, embed_ind, class_condition: Union[None, torch.Tensor] = None, mask=None
+        self,
+        token_embed,
+        class_condition: Union[None, torch.Tensor] = None,
     ):
-        device = embed_ind.device
+        device = token_embed.device
 
-        token_embeddings = self.tok_emb(embed_ind)  # (b n dim)
-        bsz, seq_len, emb_dim = token_embeddings.size()
-
+        # token_embeddings = self.tok_emb(embed_ind)  # (b n dim)
         cls_emb = self.class_embedding(
-            class_condition, embed_ind.shape[0], device
+            class_condition, token_embed.shape[0], device
         )  # (b 1 dim)
 
-        n = token_embeddings.shape[1]
+        n = token_embed.shape[1]
         position_embeddings = self.pos_emb.weight[:n, :]
-        embed = self.drop(
-            self.ln(token_embeddings + position_embeddings)
-        )  # (b, n, dim)
 
+        embed = self.drop(self.ln(token_embed + position_embeddings))  # (b, n, dim)
         embed = torch.cat((cls_emb, embed), dim=1)  # (b, 1+n, dim)
-        embed = self.transformer_blocks(embed)  # (b, 1+n, dim)
+        embed = self.blocks(embed)  # (b, 1+n, dim)
 
-        mask_latent = None
-        unmasked_latent = None
-        latent = None
-        if mask != None:
-            latent = embed[:, 1:, :]
-            mask_latent = latent[mask.float().nonzero(as_tuple=True)].view(
-                bsz, -1, emb_dim
-            )
-            unmasked_latent = latent[(1 - mask.float()).nonzero(as_tuple=True)].view(
-                bsz, -1, emb_dim
-            )
+        logits = self.Token_Prediction(embed)[:, 1:, :]  # (b, n, dim)
 
-        embed = self.Token_Prediction(embed)[:, 1:, :]  # (b, n, dim)
-
-        logits = (
-            torch.matmul(embed, self.tok_emb.weight.T) + self.bias
-        )  # (b, n, codebook_size+1)
-        logits = logits[
-            :, :, :-1
-        ]  # remove the logit for the mask token.  # (b, n, codebook_size)
-
-        if mask != None:
-            return logits, [latent, mask_latent, unmasked_latent]
-        else:
-            return logits
+        return logits
 
 
 class MageAutoEncoderTransformer(nn.Module):

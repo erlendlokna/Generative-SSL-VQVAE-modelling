@@ -43,6 +43,7 @@ class MaskGIT(nn.Module):
         T: int,
         config: dict,
         n_classes: int,
+        full_embedding: bool = False,
         **kwargs,
     ):
         super().__init__()
@@ -50,6 +51,7 @@ class MaskGIT(nn.Module):
         self.T = T
         self.config = config
         self.n_classes = n_classes
+        self.full_embedding = full_embedding
 
         self.mask_token_ids = config["VQVAE"]["codebook"]["size"]
         self.gamma = self.gamma_func("cosine")
@@ -160,8 +162,19 @@ class MaskGIT(nn.Module):
         straight from [https://github.com/dome272/MaskGIT-pytorch/blob/main/transformer.py]
         """
         device = x.device
-        _, s = self.encode_to_z_q(x, self.encoder, self.vq_model)  # (b n)
+        z_q, s = self.encode_to_z_q(x, self.encoder, self.vq_model)  # (b n)
 
+        s_M = self.generate_indicies_masks(s, device)
+
+        # prediction
+        logits = self.transformer(
+            s_M.detach(), class_condition=y
+        )  # (b n codebook_size)
+        target = s  # (b n)
+
+        return logits, target
+
+    def generate_indicies_masks(self, s, device):
         # randomly sample `t`
         t = np.random.uniform(0, 1)
 
@@ -176,14 +189,7 @@ class MaskGIT(nn.Module):
             s, device=device
         )  # (b n)
         s_M = mask * s + (~mask) * masked_indices  # (b n); `~` reverses bool-typed data
-
-        # prediction
-        logits = self.transformer(
-            s_M.detach(), class_condition=y
-        )  # (b n codebook_size)
-        target = s  # (b n)
-
-        return logits, target
+        return s_M
 
     def gamma_func(self, mode="cosine"):
         if mode == "linear":

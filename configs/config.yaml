@@ -1,3 +1,5 @@
+seed: 0
+
 dataset:
   dataset_name: "TwoPatterns"
   in_channels: 1
@@ -35,7 +37,7 @@ VQVAE:
   codebook:
     size: 32
     dim: 64
-  decay: 0.9
+  decay: 0.95
   commitment_weight: 1.0
   emb_dropout: 0.
   perceptual_loss_weight: 0
@@ -65,7 +67,7 @@ class_guidance:
   guidance_scale: 1.
 
 SSL:
-  stage1_method: "" # "barlowtwins", "vicreg", "vibcreg" or empty
+  stage1_method: "vibcreg" # "barlowtwins", "vicreg", "vibcreg" or empty
   stage2_method: "" #"barlowtwins" "vicreg", "vibcreg"
 
   # Hyperparameters for SSL methods.

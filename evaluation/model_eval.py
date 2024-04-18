@@ -20,7 +20,6 @@ from scipy.stats import kurtosis, skew
 from scipy.special import entr
 
 from models.stage2.maskgit import MaskGIT
-from models.stage2.byol_maskgit import BYOLMaskGIT
 from preprocessing.preprocess_ucr import UCRDatasetImporter
 from models.stage2.sample import unconditional_sample, conditional_sample
 from supervised_FCN.example_pretrained_model_loading import load_pretrained_FCN

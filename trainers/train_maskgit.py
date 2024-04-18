@@ -10,6 +10,7 @@ from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.loggers import WandbLogger
 from preprocessing.preprocess_ucr import UCRDatasetImporter
 from experiments.exp_maskgit import ExpMaskGIT
+from experiments.exp_full_embed_maskgit import ExpFullEmbedMaskGIT
 from evaluation.model_eval import Evaluation
 import matplotlib.pyplot as plt
 
@@ -46,6 +47,7 @@ def train_maskgit(
     wandb_project_name: str = "SSL_VQVAE-stage2",
     wandb_run_name="",
     torch_seed=0,
+    full_embed=False,
 ):
     """
     :param do_validate: if True, validation is conducted during training with a test dataset.
@@ -56,9 +58,14 @@ def train_maskgit(
     input_length = train_data_loader.dataset.X.shape[-1]
 
     # initiate model:
-    train_exp = ExpMaskGIT(
-        input_length, config, len(train_data_loader.dataset), n_classes
-    )
+    if full_embed:
+        train_exp = ExpFullEmbedMaskGIT(
+            input_length, config, len(train_data_loader.dataset), n_classes
+        )
+    else:
+        train_exp = ExpMaskGIT(
+            input_length, config, len(train_data_loader.dataset), n_classes
+        )
 
     wandb_logger = WandbLogger(
         project=wandb_project_name, name=wandb_run_name, config=config
