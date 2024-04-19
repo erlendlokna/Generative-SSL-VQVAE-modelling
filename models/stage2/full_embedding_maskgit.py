@@ -352,11 +352,9 @@ class Full_Embedding_MaskGIT(nn.Module):
                 entropy_array.append(entropy)
                 selected_entropy_array.append(selected_entropy)
 
-        z_q = self.s_to_z_q(s, self.vq_model, self.mask_token_ids, self.mask_emb)
-
         if stats:
             return s_array, probs_array, entropy_array, selected_entropy_array
-        return s, z_q
+        return s
 
     @torch.no_grad()
     def s_to_z_q(self, s, vq_model, mask_token_ids, mask_emb):
@@ -379,7 +377,6 @@ class Full_Embedding_MaskGIT(nn.Module):
         z_q.view(-1, z_q.shape[-1])[unmasked_map] = unmasked_z_q
 
         # print(torch.sum(z_q == mask_emb, dim=1)
-
         return z_q
 
     @torch.no_grad()
@@ -424,7 +421,7 @@ class Full_Embedding_MaskGIT(nn.Module):
             )
             return (s_array, probs, entropy, sel_entropy)
 
-        s, z_q = self.sample_good(
+        s = self.sample_good(
             s,
             unknown_number_in_the_beginning,
             class_condition,
@@ -432,9 +429,11 @@ class Full_Embedding_MaskGIT(nn.Module):
             gamma,
             device,
         )
-        return s, z_q
+        return s
 
-    def decode_token_ind_to_timeseries(self, z_q, return_representations: bool = False):
+    def decode_token_ind_to_timeseries(
+        self, s: torch.Tensor, return_representations: bool = False
+    ):
         #
         # It takes token embedding indices and decodes them to time series.
         #:param s: token embedding index
@@ -442,12 +441,19 @@ class Full_Embedding_MaskGIT(nn.Module):
         #:return:
         #
 
+        vq_model = self.vq_model
         decoder = self.decoder
 
-        z_q = rearrange(z_q, "b n c -> b c n")
-        z_q = rearrange(z_q, "b c (h w) -> b c h w", h=self.H_prime, w=self.W_prime)
+        quantize = F.embedding(s, vq_model._codebook.embed)  # (b n d)
+        quantize = vq_model.project_out(quantize)  # (b n c)
 
-        uhat = decoder(z_q)
+        quantize = rearrange(quantize, "b n c -> b c n")  # (b c n) == (b c (h w))
+
+        quantize = rearrange(
+            quantize, "b c (h w) -> b c h w", h=self.H_prime, w=self.W_prime
+        )
+
+        uhat = decoder(quantize)
 
         xhat = timefreq_to_time(
             uhat, self.n_fft, self.config["dataset"]["in_channels"]

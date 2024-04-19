@@ -57,10 +57,10 @@ class ExpFullEmbedMaskGIT(ExpBase):
             class_index = np.random.choice(np.concatenate(([None], np.unique(y.cpu()))))
 
             # Unconditional sampling
-            _, z_q = self.maskgit.iterative_decoding(
+            s = self.maskgit.iterative_decoding(
                 device=x.device, class_index=class_index
             )
-            x_new = self.maskgit.decode_token_ind_to_timeseries(z_q).cpu()
+            x_new = self.maskgit.decode_token_ind_to_timeseries(s).cpu()
 
             b = 0
             fig, axes = plt.subplots(1, 1, figsize=(4, 2))
