@@ -4,6 +4,8 @@ from utils import (
     load_yaml_param_settings,
     get_root_dir,
     model_filename,
+    generate_short_id,
+    experiment_name,
 )
 
 from trainers.train_vqvae import train_vqvae
@@ -11,20 +13,21 @@ from trainers.train_ssl_vqvae import train_ssl_vqvae
 from trainers.train_maskgit import train_maskgit
 import torch
 
+
 # Wandb logging information
-STAGE1_PROJECT_NAME = "S1-Aug-Slope-Block"
-STAGE2_PROJECT_NAME = "S2-vibcreg-adjust"
-STAGE2_MINI_PROJECT_NAME = "Final-Stage2-Mini-Gaussian"
+STAGE1_PROJECT_NAME = "S1-Messiah-Run"
+STAGE2_PROJECT_NAME = "S2-Messiah-Run"
+
 # Stage 1 experiments to run
-STAGE1_EXPS = ["byol", "vibcreg", "barlowtwins"]  # empty string means regular VQVAE
+STAGE1_EXPS = ["", "vibcreg", "barlowtwins"]  # empty string means regular VQVAE
 # Datasets to run experiments on
 UCR_SUBSET = [
-    "ElectricDevices",
-    "StarLightCurves",
-    "Wafer",
-    "ECG5000",
+    # "ElectricDevices",
+    # "StarLightCurves",
+    # "Wafer",
+    # "ECG5000",
     "TwoPatterns",
-    # "FordA",
+    "FordA",
     # "UWaveGestureLibraryAll",
     # "FordB",
     # "ChlorineConcentration",
@@ -34,16 +37,14 @@ UCR_SUBSET = [
 NUM_RUNS_PER = 1
 # Controls
 RUN_STAGE1 = True
-RUN_STAGE2 = False
-RUN_MINI_STAGE2 = False
-SEED = 2
-# Epochs:
-STAGE1_EPOCHS = 250  # 1000
-STAGE2_EPOCHS = 1000
-STAGE2_MINI_EPOCHS = 100
+RUN_STAGE2 = True
 
-STAGE1_TIME_AUGS = ["slope"]
-STAGE1_TIME_FREQ_AUGS = ["block"]
+SEED = 4
+# Epochs:
+STAGE1_EPOCHS = 1000  # 1000
+STAGE2_EPOCHS = 1000
+
+STAGE1_AUGS = ["window_warp", "amplitude_resize"]
 
 
 # Main experiment function
@@ -58,8 +59,12 @@ def run_experiments():
     config["trainer_params"]["max_epochs"]["stage2"] = STAGE2_EPOCHS
     # Only reconstruct original view:
 
-    config["augmentations"]["time_augs"] = STAGE1_TIME_AUGS
-    config["augmentations"]["timefreq_augs"] = STAGE1_TIME_FREQ_AUGS
+    config["augmentations"]["time_augs"] = STAGE1_AUGS
+
+    config["seed"] = SEED
+    config["id"] = generate_short_id(
+        length=6
+    )  # all models in the experiment will use this id.
 
     batch_size_stage1 = config["dataset"]["batch_sizes"]["stage1"]
     batch_size_stage2 = config["dataset"]["batch_sizes"]["stage2"]
@@ -75,12 +80,11 @@ def run_experiments():
                 "stage1_exp": exp,
                 "augmented_data": (exp != ""),
                 "orthogonal_reg_weight": ortho_reg,
-                "aug_recon_rate": aug_recon,
                 "project_name": STAGE1_PROJECT_NAME,
                 "epochs": STAGE1_EPOCHS,
                 "train_fn": train_vqvae if exp == "" else train_ssl_vqvae,
+                "full_embed": False,
             }
-            for aug_recon in [0.0, 0.05, 0.1]
             for ortho_reg in [0, 10]
             for exp in STAGE1_EXPS
         ]
@@ -96,22 +100,7 @@ def run_experiments():
                 "project_name": STAGE2_PROJECT_NAME,
                 "epochs": STAGE2_EPOCHS,
                 "train_fn": train_maskgit,
-            }
-            for ortho_reg in [0, 10]
-            for exp in STAGE1_EXPS
-        ]
-
-    if RUN_MINI_STAGE2:
-        experiments += [
-            # Stage 2
-            {
-                "stage": 2,
-                "stage1_exp": exp,
-                "augmented_data": False,
-                "orthogonal_reg_weight": ortho_reg,
-                "project_name": STAGE2_MINI_PROJECT_NAME,
-                "epochs": STAGE2_MINI_EPOCHS,
-                "train_fn": train_maskgit,
+                "full_embed": (exp != ""),
             }
             for ortho_reg in [0, 10]
             for exp in STAGE1_EXPS
@@ -148,15 +137,7 @@ def run_experiments():
 
             for run in range(NUM_RUNS_PER):
                 # Wandb run name:
-                stage1_exp = experiment["stage1_exp"]
-                stage1_exp = f"{stage1_exp}-" if stage1_exp != "" else ""
-                decorr = "decorr-" if experiment["orthogonal_reg_weight"] > 0 else ""
-                recon_rate = experiment["aug_recon_rate"]
-                aug_recons = f"aug_recons_{recon_rate}-" if recon_rate > 0 else ""
-                stage = "stage1" if experiment["stage"] == 1 else "stage2"
-                mini = "-mini" if experiment["epochs"] == STAGE2_MINI_EPOCHS else ""
-                seed = f"-seed{SEED}"
-                run_name = "".join([decorr, aug_recons, stage1_exp, stage, mini, seed])
+                run_name = experiment_name(experiment, SEED)
 
                 # Set correct data loader
                 if experiment["stage"] == 1:
@@ -179,6 +160,7 @@ def run_experiments():
                     wandb_run_name=f"{run_name}-{dataset}",
                     wandb_project_name=experiment["project_name"],
                     torch_seed=SEED,
+                    full_embed=experiment["full_embed"],
                 )
 
 

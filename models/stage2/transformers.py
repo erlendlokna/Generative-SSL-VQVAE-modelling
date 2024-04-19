@@ -270,20 +270,23 @@ class FullEmbedBidirectionalTransformer(nn.Module):
     ):
         device = token_embed.device
 
-        # token_embeddings = self.tok_emb(embed_ind)  # (b n dim)
         cls_emb = self.class_embedding(
             class_condition, token_embed.shape[0], device
         )  # (b 1 dim)
 
         n = token_embed.shape[1]
         position_embeddings = self.pos_emb.weight[:n, :]
-
+        # print("Initial token_embed shape:", token_embed.shape)
+        # print("Position embeddings shape:", position_embeddings.shape)
+        # print("Class embeddings shape:", cls_emb.shape)
         embed = self.drop(self.ln(token_embed + position_embeddings))  # (b, n, dim)
         embed = torch.cat((cls_emb, embed), dim=1)  # (b, 1+n, dim)
+        # print("Embed shape after class embedding concatenation:", embed.shape)
+        # print("Embed shape entering blocks:", embed.shape)
         embed = self.blocks(embed)  # (b, 1+n, dim)
-
+        # print("Embed shape after blocks:", embed.shape)
         logits = self.Token_Prediction(embed)[:, 1:, :]  # (b, n, dim)
-
+        # print("FINISHED LOGITS")
         return logits
 
 

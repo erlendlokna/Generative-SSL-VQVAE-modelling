@@ -95,6 +95,26 @@ def freeze(model):
         param.requires_grad = False
 
 
+def experiment_name(experiment, seed):
+    stage1_exp = experiment["stage1_exp"]
+    stage1_exp = f"{stage1_exp}-" if stage1_exp != "" else ""
+    decorr = "decorr-" if experiment["orthogonal_reg_weight"] > 0 else ""
+    stage = "stage1" if experiment["stage"] == 1 else "stage2"
+    seed = f"-seed{seed}"
+    return "".join([decorr, stage1_exp, stage, seed])
+
+
+def generate_short_id(length=6):
+    char_set = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+    np_chars = np.array(list(char_set))
+
+    random_chars = np.random.choice(np_chars, size=length)
+
+    short_id = "".join(random_chars)
+    return short_id
+
+
 def model_filename(config, model_type):
     model_types = {"encoder", "decoder", "vqmodel", "maskgit"}
 
@@ -108,14 +128,17 @@ def model_filename(config, model_type):
     filename_parts = []
 
     if decorr:
-        filename_parts.append("decorr_")
+        filename_parts.append("decorr-")
 
     if stage1_ssl_method:
-        filename_parts.append(f"{stage1_ssl_method}_")
+        filename_parts.append(f"{stage1_ssl_method}-")
 
     filename_parts.append(model_type)
 
-    # filename_parts.append(f"-seed-{seed}")
+    filename_parts.append(f"-seed-{seed}")
+
+    if config["id"] != None:
+        filename_parts.append(f"-{config['id']}")
 
     return "".join(part for part in filename_parts if part)
 

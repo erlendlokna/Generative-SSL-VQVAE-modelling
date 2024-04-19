@@ -1,4 +1,5 @@
 seed: 0
+id: None
 
 dataset:
   dataset_name: "TwoPatterns"
@@ -19,7 +20,7 @@ trainer_params:
     - 0
   max_epochs:
     stage1: 1000
-    stage2: 100 #1000 #1000 #10000
+    stage2: 10 #1000 #1000 #10000
 
 encoder:
   dim: 64

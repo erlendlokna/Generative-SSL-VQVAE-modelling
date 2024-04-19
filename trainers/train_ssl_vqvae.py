@@ -49,6 +49,7 @@ def train_ssl_vqvae(
     wandb_run_name="",
     disable_wandb=False,
     torch_seed=0,
+    **kwargs,
 ):
     """
     Trainer for VQVAE or SSL-VQVAE model based on the `do_validate` and `SSL` parameters.
