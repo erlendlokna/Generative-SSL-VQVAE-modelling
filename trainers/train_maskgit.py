@@ -62,10 +62,12 @@ def train_maskgit(
         train_exp = ExpFullEmbedMaskGIT(
             input_length, config, len(train_data_loader.dataset), n_classes
         )
+        name = "fullembed-maskgit"
     else:
         train_exp = ExpMaskGIT(
             input_length, config, len(train_data_loader.dataset), n_classes
         )
+        name = "maskgit"
 
     wandb_logger = WandbLogger(
         project=wandb_project_name, name=wandb_run_name, config=config
@@ -97,7 +99,7 @@ def train_maskgit(
 
     print("saving the model...")
     save_model(
-        {model_filename(config, "maskgit"): train_exp.maskgit},
+        {model_filename(config, name): train_exp.maskgit},
         id=config["dataset"]["dataset_name"],
     )
 
@@ -112,15 +114,26 @@ def train_maskgit(
         config=config,
         batch_size=config["dataset"]["batch_sizes"]["stage2"],
     )
-    x_gen = evaluation.sampleMaskGit(
-        max(
-            evaluation.X_test.shape[0],
-            config["dataset"]["batch_sizes"]["stage2"],
-        ),
-        input_length,
-        n_classes,
-        "unconditional",
-    )
+    if full_embed:
+        x_gen = evaluation.sampleFullEmbedMaskGit(
+            max(
+                evaluation.X_test.shape[0],
+                config["dataset"]["batch_sizes"]["stage2"],
+            ),
+            input_length,
+            n_classes,
+            "unconditional",
+        )
+    else:
+        x_gen = evaluation.sampleMaskGit(
+            max(
+                evaluation.X_test.shape[0],
+                config["dataset"]["batch_sizes"]["stage2"],
+            ),
+            input_length,
+            n_classes,
+            "unconditional",
+        )
 
     z_test, z_gen = evaluation.compute_z(x_gen)
     fid, (z_test, z_gen) = evaluation.fid_score(z_test, z_gen)
