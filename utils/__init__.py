@@ -106,17 +106,14 @@ def experiment_name(experiment, seed):
 
 def generate_short_id(length=6):
     char_set = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-
     np_chars = np.array(list(char_set))
-
     random_chars = np.random.choice(np_chars, size=length)
-
     short_id = "".join(random_chars)
     return short_id
 
 
 def model_filename(config, model_type):
-    model_types = {"encoder", "decoder", "vqmodel", "maskgit"}
+    model_types = {"encoder", "decoder", "vqmodel", "maskgit", "fullembed-maskgit"}
 
     assert model_type in model_types, "Non valid model type"
 

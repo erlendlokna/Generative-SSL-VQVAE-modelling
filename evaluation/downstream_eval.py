@@ -4,6 +4,7 @@ from sklearn import metrics
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.decomposition import PCA
 import umap
+import umap.plot
 from sklearn.manifold import TSNE
 import matplotlib.pyplot as plt
 from sklearn.svm import SVC
@@ -56,42 +57,46 @@ class DownstreamEval:
         wandb.log(scores)
 
     def log_tsne(self, z_tr, z_te, y_tr, y_te, epoch):
-        z_tr = z_tr.squeeze()
-        z_te = z_te.squeeze()
-        y_tr = y_tr.squeeze()
-        y_te = y_te.squeeze()
+        z_tr = z_tr.squeeze().numpy()
+        z_te = z_te.squeeze().numpy()
+        y_tr = y_tr.squeeze().numpy()
+        y_te = y_te.squeeze().numpy()
 
         tsne = TSNE(n_components=2, random_state=0)
-        z_tr_tsne = tsne.fit_transform(z_tr.numpy())
-        z_te_tsne = tsne.fit_transform(z_te.numpy())
-        df_tr = pd.DataFrame(z_tr_tsne, columns=["tsne-2d-one", "tsne-2d-two"])
-        df_te = pd.DataFrame(z_te_tsne, columns=["tsne-2d-one", "tsne-2d-two"])
+        Z = np.concatenate((z_tr, z_te), axis=0)  # concatenate along the first axis
+        Y = np.concatenate((y_tr, y_te), axis=0)  # concatenate along the first axis
+
+        Z_tsne = tsne.fit_transform(Z)  # fit t-SNE on the concatenated array
+
+        df = pd.DataFrame(Z_tsne, columns=["tsne-2d-one", "tsne-2d-two"])
 
         fig, ax = plt.subplots(figsize=(10, 5))
         sns.scatterplot(
             x="tsne-2d-one",
             y="tsne-2d-two",
-            hue=y_tr,
+            hue=Y,
             palette=sns.color_palette("hls", len(np.unique(y_tr))),
-            data=df_tr,
+            data=df,
             alpha=0.5,
         )
-        ax.set_title("TSNE plot for training data")
-        wandb.log({"tsne_plot_train": wandb.Image(fig)})
+        ax.set_title("TSNE plot @ epoch: {}".format(epoch + 1))
+        wandb.log({"tsne_plot": wandb.Image(fig)})
         plt.close(fig)
 
-        fig, ax = plt.subplots(figsize=(10, 5))
-        sns.scatterplot(
-            x="tsne-2d-one",
-            y="tsne-2d-two",
-            hue=y_te,
-            palette=sns.color_palette("hls", len(np.unique(y_te))),
-            data=df_te,
-            alpha=0.5,
-        )
-        ax.set_title("TSNE plot for testing data")
-        wandb.log({"tsne_plot_test": wandb.Image(fig)})
-        plt.close(fig)
+    def log_umap(self, z_tr, z_te, y_tr, y_te, epoch):
+        z_tr = z_tr.squeeze().numpy()
+        z_te = z_te.squeeze().numpy()
+        y_tr = y_tr.squeeze().numpy()
+        y_te = y_te.squeeze().numpy()
+
+        Z = np.concatenate((z_tr, z_te), axis=0)  # concatenate along the first axis
+        Y = np.concatenate((y_tr, y_te), axis=0)  # concatenate along the first axis
+
+        mapper = umap.UMAP(n_components=2, random_state=0, densmap=True).fit(Z)
+        f = umap.plot.points(mapper, labels=Y.reshape(-1), theme="fire")
+        f.set_title("UMAP plot @ epoch: {}".format(epoch + 1))
+        wandb.log({"umap_plot": wandb.Image(f)})
+        plt.close()
 
     def log_token_usage(self, train_count, val_count, epoch):
         token_indices = np.arange(len(train_count))

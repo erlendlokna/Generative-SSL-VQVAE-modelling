@@ -19,8 +19,8 @@ trainer_params:
   gpus:
     - 0
   max_epochs:
-    stage1: 1000
-    stage2: 10 #1000 #1000 #10000
+    stage1: 10
+    stage2: 100 #1000 #1000 #10000
 
 encoder:
   dim: 64

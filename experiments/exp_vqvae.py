@@ -148,7 +148,7 @@ class Exp_VQVAE(ExpBase):
             "loss": loss,
             "commit_loss.orig": vq_loss["commit_loss"],
             #'commit_loss': vq_loss, #?
-            "perplexity.orig": perplexity,
+            "perplexity": perplexity,
             "recons_loss.orig.time": recons_loss["orig.time"],
             "recons_loss.orig.timefreq": recons_loss["orig.timefreq"],
             "recons_loss.orig": recons_loss["orig.time"] + recons_loss["orig.timefreq"],
@@ -174,7 +174,7 @@ class Exp_VQVAE(ExpBase):
             "val_perplexity": perplexity,
             "val_recons_loss.time": recons_loss["orig.time"],
             "val_recons_loss.timefreq": recons_loss["orig.timefreq"],
-            "val_recons_loss": recons_loss["orig.time"] + recons_loss["orig.timefreq"],
+            "val_recon_loss": recons_loss["orig.time"] + recons_loss["orig.timefreq"],
         }
 
         detach_the_unnecessary(val_loss_hist)

@@ -181,7 +181,6 @@ class Exp_SIAM_VQVAE(ExpBase):
 
             ax[0].plot(
                 x_orig[b, c].cpu(),
-                label=f"original view",
                 c="grey",
                 alpha=1.0,
             )
@@ -193,7 +192,6 @@ class Exp_SIAM_VQVAE(ExpBase):
             )
             ax[1].plot(
                 x_aug[b, c].cpu(),
-                label=f"augmented view",
                 c="grey",
                 alpha=1.0,
             )
@@ -203,8 +201,8 @@ class Exp_SIAM_VQVAE(ExpBase):
                 alpha=0.6,
             )
 
-            ax[0].set_title("Original view / Reconstructed")
-            ax[1].set_title("Augmented view / AutoEncoder Reconstructed")
+            ax[0].set_title("Original")
+            ax[1].set_title("Augmented")
             ax[0].set_ylim(-5, 5)
             ax[1].set_ylim(-5, 5)
 
@@ -307,9 +305,10 @@ class Exp_SIAM_VQVAE(ExpBase):
     @torch.no_grad()
     def on_train_epoch_end(self):
         current_epoch = self.current_epoch + 1  # 1-indexed
-        log_extra = current_epoch == (self.last_epoch) or (current_epoch % 200 == 0)
+        log_extra = current_epoch % 200 == 0
+        last_epoch = current_epoch == self.last_epoch
 
-        if current_epoch % self.probe_test_per == 0 or log_extra:
+        if current_epoch % self.probe_test_per == 0 or log_extra or last_epoch:
             epoch = self.current_epoch
             print("Downstream evaluation..")
             # Extracting data through encoder and vq_model. And counting tokens
@@ -330,12 +329,16 @@ class Exp_SIAM_VQVAE(ExpBase):
                     codebook.cpu(), epoch, self.device
                 )
                 print("tsne plots..")
-                self.downstream_eval.log_tsne(z_tr, z_te, y_tr, y_te, epoch)
                 print("token usage..")
                 self.downstream_eval.log_token_usage(train_counts, val_counts, epoch)
                 self.downstream_eval.log_corr_vs_usage(
                     codebook.cpu(), train_counts, epoch
                 )
+            if last_epoch:
+                print("Downstream evaluation..")
+                print("Encoding data..")
+                self.downstream_eval.log_tsne(z_tr, z_te, y_tr, y_te, epoch)
+                self.downstream_eval.log_umap(z_tr, z_te, y_tr, y_te, epoch)
 
     @torch.no_grad()
     def on_train_epoch_start(self):
