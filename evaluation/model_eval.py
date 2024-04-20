@@ -118,6 +118,7 @@ class Evaluation(object):
         n_classes: int,
         kind: str,
         class_index: int = -1,
+        load_finetuned_codebook: bool = False,
     ):
         assert kind in ["unconditional", "conditional"]
 
@@ -127,6 +128,7 @@ class Evaluation(object):
             **self.config["MaskGIT"],
             config=self.config,
             n_classes=n_classes,
+            load_finetuned_codebook=load_finetuned_codebook,
         ).to(self.device)
 
         # load

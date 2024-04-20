@@ -19,7 +19,7 @@ STAGE1_PROJECT_NAME = "S1-Messiah-Run"
 STAGE2_PROJECT_NAME = "S2-Messiah-Run"
 
 # Stage 1 experiments to run
-STAGE1_EXPS = ["", "vibcreg", "barlowtwins"]  # empty string means regular VQVAE
+STAGE1_EXPS = ["vibcreg"]  # empty string means regular VQVAE
 # Datasets to run experiments on
 UCR_SUBSET = [
     # "ElectricDevices",
@@ -84,6 +84,7 @@ def run_experiments():
                 "epochs": STAGE1_EPOCHS,
                 "train_fn": train_vqvae if exp == "" else train_ssl_vqvae,
                 "full_embed": False,
+                "finetune_codebook": False,
             }
             for ortho_reg in [0, 10]
             for exp in STAGE1_EXPS
@@ -101,6 +102,7 @@ def run_experiments():
                 "epochs": STAGE2_EPOCHS,
                 "train_fn": train_maskgit,
                 "full_embed": (exp != ""),
+                "finetune_codebook": (exp != ""),
             }
             for ortho_reg in [0, 10]
             for exp in STAGE1_EXPS
@@ -134,6 +136,8 @@ def run_experiments():
             # Only configure stage 1 method:
             c["SSL"][f"stage1_method"] = experiment["stage1_exp"]
             c["VQVAE"]["orthogonal_reg_weight"] = experiment["orthogonal_reg_weight"]
+            c["MaskGIT"]["finetune_codebook"] = experiment["finetune_codebook"]
+            c["MaskGIT"]["full_embed"] = experiment["full_embed"]
 
             for run in range(NUM_RUNS_PER):
                 # Wandb run name:
@@ -160,7 +164,6 @@ def run_experiments():
                     wandb_run_name=f"{run_name}-{dataset}",
                     wandb_project_name=experiment["project_name"],
                     torch_seed=SEED,
-                    full_embed=experiment["full_embed"],
                 )
 
 

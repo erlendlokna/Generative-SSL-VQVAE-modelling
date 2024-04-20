@@ -46,6 +46,7 @@ class Full_Embedding_MaskGIT(nn.Module):
         T: int,
         config: dict,
         n_classes: int,
+        load_finetuned_codebook: bool,
         **kwargs,
     ):
         super().__init__()
@@ -53,6 +54,7 @@ class Full_Embedding_MaskGIT(nn.Module):
         self.T = T
         self.config = config
         self.n_classes = n_classes
+        self.finetune_codebook = config["MasGIT"]["finetune_codebook"]
 
         self.gamma = self.gamma_func("cosine")
         dataset_name = config["dataset"]["dataset_name"]
@@ -72,7 +74,7 @@ class Full_Embedding_MaskGIT(nn.Module):
         self.decoder = VQVAEDecoder(
             dim, 2 * in_channels, downsample_rate, config["decoder"]["n_resnet_blocks"]
         )
-        self.vq_model = VectorQuantize(
+        self.init_vq_model = VectorQuantize(
             dim, config["VQVAE"]["codebook"]["size"], **config["VQVAE"]
         )
         # load trained models for encoder, decoder, and vq_models
@@ -90,22 +92,31 @@ class Full_Embedding_MaskGIT(nn.Module):
             f"{model_filename(config, 'decoder')}-{dataset_name}.ckpt",
         )
         print(f"{ssl_method} decoder loaded")
+
+        vq_model_name = "vqmodel-finetuned" if load_finetuned_codebook else "vqmodel"
         self.load(
-            self.vq_model,
+            self.init_vq_model,
             get_root_dir().joinpath("saved_models"),
-            f"{model_filename(config, 'vqmodel')}-{dataset_name}.ckpt",
+            f"{model_filename(config, vq_model_name)}-{dataset_name}.ckpt",
         )
-        print(f"{ssl_method} vqmodel loaded")
+
+        print(f"{ssl_method} {vq_model_name} loaded")
 
         # freeze the models for encoder, decoder, and vq_model
         freeze(self.encoder)
         freeze(self.decoder)
-        freeze(self.vq_model)
 
-        # evaluation model for encoder, decoder, and vq_model
+        # evaluation model for encoder, decoder
         self.encoder.eval()
         self.decoder.eval()
-        self.vq_model.eval()
+
+        if self.finetune_codebook:
+            # copy the vq
+            self.vq_model = copy.deepcopy(self.init_vq_model)
+        else:
+            self.vq_model = self.init_vq_model
+            freeze(self.vq_model)
+            self.vq_model.eval()
 
         # token lengths
         self.num_tokens = self.encoder.num_tokens.item()
@@ -115,7 +126,6 @@ class Full_Embedding_MaskGIT(nn.Module):
         self.W_prime = self.encoder.W_prime.item()
 
         # pretrained discrete tokens
-        embed = nn.Parameter(copy.deepcopy(self.vq_model._codebook.embed))
 
         self.transformer = FullEmbedBidirectionalTransformer(
             self.H_prime * self.W_prime,
@@ -123,7 +133,6 @@ class Full_Embedding_MaskGIT(nn.Module):
             config["VQVAE"]["codebook"]["dim"],
             **config["MaskGIT"]["prior_model"],
             n_classes=n_classes,
-            pretrained_tok_emb=embed,
         )
 
         # stochastic codebook sampling

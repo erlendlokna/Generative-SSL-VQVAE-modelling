@@ -61,8 +61,8 @@ MaskGIT:
     use_rmsnorm: True
     p_unconditional: 0.2
 
-  # For the BYOL MaskGIT
-  moving_average_decay: 0.9
+  full_embed: True
+  finetune_codebook: True
 
 class_guidance:
   guidance_scale: 1.

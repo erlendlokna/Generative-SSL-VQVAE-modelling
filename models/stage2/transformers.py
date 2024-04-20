@@ -175,8 +175,6 @@ class FullEmbedBidirectionalTransformer(nn.Module):
         use_rmsnorm: bool,
         p_unconditional: float,
         n_classes: int,
-        pretrained_tok_emb: nn.Parameter = None,
-        freeze_pretrained_tokens: bool = False,
         **kwargs
     ):
         """

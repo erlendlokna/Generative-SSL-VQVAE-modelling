@@ -9,15 +9,26 @@ from experiments.exp_base import ExpBase, detach_the_unnecessary
 from models.stage2.full_embedding_maskgit import Full_Embedding_MaskGIT
 from evaluation.model_eval import Evaluation
 
+from evaluation.downstream_eval import DownstreamEval
+
 
 class ExpFullEmbedMaskGIT(ExpBase):
     def __init__(
-        self, input_length: int, config: dict, n_train_samples: int, n_classes: int
+        self,
+        input_length: int,
+        config: dict,
+        n_train_samples: int,
+        n_classes: int,
+        load_finetuned_codebook: bool = False,
     ):
         super().__init__()
         self.config = config
         self.maskgit = Full_Embedding_MaskGIT(
-            input_length, **config["MaskGIT"], config=config, n_classes=n_classes
+            input_length,
+            **config["MaskGIT"],
+            config=config,
+            n_classes=n_classes,
+            load_finetuned_codebook=load_finetuned_codebook,
         )
         self.T_max = config["trainer_params"]["max_epochs"]["stage2"] * (
             np.ceil(n_train_samples / config["dataset"]["batch_sizes"]["stage2"]) + 1

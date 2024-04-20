@@ -113,7 +113,14 @@ def generate_short_id(length=6):
 
 
 def model_filename(config, model_type):
-    model_types = {"encoder", "decoder", "vqmodel", "maskgit", "fullembed-maskgit"}
+    model_types = {
+        "encoder",
+        "decoder",
+        "vqmodel",
+        "maskgit",
+        "fullembed-maskgit",
+        "vqmodel-finetuned",
+    }
 
     assert model_type in model_types, "Non valid model type"
 

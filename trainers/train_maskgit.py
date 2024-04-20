@@ -47,7 +47,6 @@ def train_maskgit(
     wandb_project_name: str = "SSL_VQVAE-stage2",
     wandb_run_name="",
     torch_seed=0,
-    full_embed=False,
 ):
     """
     :param do_validate: if True, validation is conducted during training with a test dataset.
@@ -57,10 +56,19 @@ def train_maskgit(
     n_classes = len(np.unique(train_data_loader.dataset.Y))
     input_length = train_data_loader.dataset.X.shape[-1]
 
+    full_embed = config["MaskGIT"]["full_embed"]
+    finetune_codebook = config["MaskGIT"]["finetune_codebook"]
+
     # initiate model:
     if full_embed:
         train_exp = ExpFullEmbedMaskGIT(
-            input_length, config, len(train_data_loader.dataset), n_classes
+            input_length=input_length,
+            config=config,
+            n_train_samples=len(train_data_loader.dataset),
+            n_classes=n_classes,
+            train_data_loader=train_data_loader,
+            test_data_loader=test_data_loader,
+            load_finetuned_codebook=False,
         )
         name = "fullembed-maskgit"
     else:
@@ -102,6 +110,11 @@ def train_maskgit(
         {model_filename(config, name): train_exp.maskgit},
         id=config["dataset"]["dataset_name"],
     )
+    if finetune_codebook:
+        save_model(
+            {model_filename(config, "vqmodel-finetuned"): train_exp.vq_model},
+            id=config["dataset"]["dataset_name"],
+        )
 
     print("evaluating...")
     print("FID, IS, PCA, TSNE")
@@ -123,6 +136,7 @@ def train_maskgit(
             input_length,
             n_classes,
             "unconditional",
+            load_finetuned_codebook=finetune_codebook,
         )
     else:
         x_gen = evaluation.sampleMaskGit(
