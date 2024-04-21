@@ -54,7 +54,7 @@ class Full_Embedding_MaskGIT(nn.Module):
         self.T = T
         self.config = config
         self.n_classes = n_classes
-        self.finetune_codebook = config["MasGIT"]["finetune_codebook"]
+        self.finetune_codebook = config["MaskGIT"]["finetune_codebook"]
 
         self.gamma = self.gamma_func("cosine")
         dataset_name = config["dataset"]["dataset_name"]
@@ -102,7 +102,7 @@ class Full_Embedding_MaskGIT(nn.Module):
 
         print(f"{ssl_method} {vq_model_name} loaded")
 
-        # freeze the models for encoder, decoder, and vq_model
+        # freeze the models for encoder, decoder
         freeze(self.encoder)
         freeze(self.decoder)
 
@@ -113,6 +113,7 @@ class Full_Embedding_MaskGIT(nn.Module):
         if self.finetune_codebook:
             # copy the vq
             self.vq_model = copy.deepcopy(self.init_vq_model)
+            freeze(self.init_vq_model)
         else:
             self.vq_model = self.init_vq_model
             freeze(self.vq_model)
@@ -124,8 +125,6 @@ class Full_Embedding_MaskGIT(nn.Module):
         # latent space dim
         self.H_prime = self.encoder.H_prime.item()
         self.W_prime = self.encoder.W_prime.item()
-
-        # pretrained discrete tokens
 
         self.transformer = FullEmbedBidirectionalTransformer(
             self.H_prime * self.W_prime,

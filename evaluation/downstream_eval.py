@@ -92,7 +92,7 @@ class DownstreamEval:
         Z = np.concatenate((z_tr, z_te), axis=0)  # concatenate along the first axis
         Y = np.concatenate((y_tr, y_te), axis=0)  # concatenate along the first axis
 
-        mapper = umap.UMAP(n_components=2, random_state=0).fit(Z)
+        mapper = umap.UMAP(random_state=42).fit(Z)
         f = umap.plot.points(mapper, labels=Y.reshape(-1), theme="fire")
         f.set_title("UMAP plot @ epoch: {}".format(epoch + 1))
         wandb.log({"umap_plot": wandb.Image(f)})

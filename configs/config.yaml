@@ -1,5 +1,5 @@
 seed: 0
-id: None
+ID: 000000
 
 dataset:
   dataset_name: "TwoPatterns"
@@ -61,8 +61,7 @@ MaskGIT:
     use_rmsnorm: True
     p_unconditional: 0.2
 
-  full_embed: True
-  finetune_codebook: True
+  finetune_codebook: True #For full embedding MaskGIT
 
 class_guidance:
   guidance_scale: 1.

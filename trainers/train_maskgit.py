@@ -47,6 +47,7 @@ def train_maskgit(
     wandb_project_name: str = "SSL_VQVAE-stage2",
     wandb_run_name="",
     torch_seed=0,
+    full_embed=False,
 ):
     """
     :param do_validate: if True, validation is conducted during training with a test dataset.
@@ -56,9 +57,6 @@ def train_maskgit(
     n_classes = len(np.unique(train_data_loader.dataset.Y))
     input_length = train_data_loader.dataset.X.shape[-1]
 
-    full_embed = config["MaskGIT"]["full_embed"]
-    finetune_codebook = config["MaskGIT"]["finetune_codebook"]
-
     # initiate model:
     if full_embed:
         train_exp = ExpFullEmbedMaskGIT(
@@ -66,16 +64,14 @@ def train_maskgit(
             config=config,
             n_train_samples=len(train_data_loader.dataset),
             n_classes=n_classes,
-            train_data_loader=train_data_loader,
-            test_data_loader=test_data_loader,
             load_finetuned_codebook=False,
         )
-        name = "fullembed-maskgit"
+        exp_name = "fullembed-maskgit"
     else:
         train_exp = ExpMaskGIT(
             input_length, config, len(train_data_loader.dataset), n_classes
         )
-        name = "maskgit"
+        exp_name = "maskgit"
 
     wandb_logger = WandbLogger(
         project=wandb_project_name, name=wandb_run_name, config=config
@@ -107,12 +103,14 @@ def train_maskgit(
 
     print("saving the model...")
     save_model(
-        {model_filename(config, name): train_exp.maskgit},
+        {model_filename(config, exp_name): train_exp.maskgit},
         id=config["dataset"]["dataset_name"],
     )
-    if finetune_codebook:
+    # Save codebook if it is finetuned
+    finetuned_codebook = config["MaskGIT"]["finetune_codebook"]
+    if finetuned_codebook:
         save_model(
-            {model_filename(config, "vqmodel-finetuned"): train_exp.vq_model},
+            {model_filename(config, "vqmodel-finetuned"): train_exp.maskgit.vq_model},
             id=config["dataset"]["dataset_name"],
         )
 
@@ -136,7 +134,7 @@ def train_maskgit(
             input_length,
             n_classes,
             "unconditional",
-            load_finetuned_codebook=finetune_codebook,
+            load_finetuned_codebook=finetuned_codebook,
         )
     else:
         x_gen = evaluation.sampleMaskGit(

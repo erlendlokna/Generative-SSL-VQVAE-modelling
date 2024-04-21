@@ -95,13 +95,14 @@ def freeze(model):
         param.requires_grad = False
 
 
-def experiment_name(experiment, seed):
-    stage1_exp = experiment["stage1_exp"]
-    stage1_exp = f"{stage1_exp}-" if stage1_exp != "" else ""
+def experiment_name(experiment, seed, ID):
+    ssl_method = experiment["ssl_method"]
+    ssl_method = f"{ssl_method}-" if ssl_method != "" else ""
     decorr = "decorr-" if experiment["orthogonal_reg_weight"] > 0 else ""
     stage = "stage1" if experiment["stage"] == 1 else "stage2"
     seed = f"-seed{seed}"
-    return "".join([decorr, stage1_exp, stage, seed])
+    id = f"-{ID}"
+    return "".join([decorr, ssl_method, stage, seed, id])
 
 
 def generate_short_id(length=6):
@@ -141,8 +142,7 @@ def model_filename(config, model_type):
 
     filename_parts.append(f"-seed-{seed}")
 
-    if config["id"] != None:
-        filename_parts.append(f"-{config['id']}")
+    filename_parts.append(f"-{config['ID']}")
 
     return "".join(part for part in filename_parts if part)
 
