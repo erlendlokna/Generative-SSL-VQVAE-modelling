@@ -39,8 +39,8 @@ RUN_STAGE2 = True
 
 SEED = 4
 # Epochs:
-STAGE1_EPOCHS = 10  # 1000
-STAGE2_EPOCHS = 10
+STAGE1_EPOCHS = 1000  # 1000
+STAGE2_EPOCHS = 1000
 
 STAGE1_AUGS = ["window_warp", "amplitude_resize"]
 # Stage 1 SSL methods to run
