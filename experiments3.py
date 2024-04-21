@@ -165,7 +165,7 @@ def run_experiments():
 
             for run in range(NUM_RUNS_PER):
                 # Wandb run name:
-                run_name = experiment_name(experiment, SEED)
+                run_name = experiment_name(experiment, SEED, c["ID"])
 
                 # Set correct data loader
                 if experiment["stage"] == 1:
