@@ -114,7 +114,9 @@ class Full_Embedding_MaskGIT(nn.Module):
         self.vq_model.eval()
 
         # copy the codebook weights
-        self.cb_stage1 = copy.deepcopy(self.vq_model.codebook).to(device)  # (k, d)
+        self.cb_stage1 = nn.Parameter(
+            copy.deepcopy(self.vq_model.codebook).to(device)
+        )  # (k, d)
 
         # load the finetuned codebook weights
         if load_finetuned_codebook:
@@ -222,9 +224,10 @@ class Full_Embedding_MaskGIT(nn.Module):
         z_q_M = torch.where(mask.unsqueeze(-1), mask_emb, z_q)
 
         # prediction
-        logits = self.transformer(
-            z_q_M.detach(), class_condition=y
-        )  # (b n codebook_size)
+        if not self.finetune_codebook:
+            z_q_M = z_q_M.detach()
+
+        logits = self.transformer(z_q_M, class_condition=y)  # (b n codebook_size)
         target = s  # (b n)
 
         return logits, target
