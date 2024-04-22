@@ -117,6 +117,7 @@ class Evaluation(object):
         input_length: int,
         n_classes: int,
         kind: str,
+        device: torch.device,
         class_index: int = -1,
         load_finetuned_codebook: bool = False,
     ):
@@ -128,11 +129,19 @@ class Evaluation(object):
             **self.config["MaskGIT"],
             config=self.config,
             n_classes=n_classes,
+            finetune_codebook=False,
+            device=device,
             load_finetuned_codebook=load_finetuned_codebook,
         ).to(self.device)
 
         # load
-        fname = f"{model_filename(self.config, 'fullembed-maskgit')}-{self.subset_dataset_name}.ckpt"
+        model_name = "fullembed-maskgit"
+        if load_finetuned_codebook:
+            model_name += "-finetuned"
+
+        fname = (
+            f"{model_filename(self.config, model_name)}-{self.subset_dataset_name}.ckpt"
+        )
         try:
             ckpt_fname = os.path.join("saved_models", fname)
             maskgit.load_state_dict(torch.load(ckpt_fname), strict=False)

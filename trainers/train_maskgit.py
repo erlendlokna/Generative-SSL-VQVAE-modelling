@@ -19,6 +19,7 @@ from utils import (
     get_root_dir,
     load_yaml_param_settings,
     save_model,
+    save_codebook,
     model_filename,
 )
 
@@ -48,6 +49,7 @@ def train_maskgit(
     wandb_run_name="",
     torch_seed=0,
     full_embed=False,
+    finetune_codebook=False,
 ):
     """
     :param do_validate: if True, validation is conducted during training with a test dataset.
@@ -64,9 +66,12 @@ def train_maskgit(
             config=config,
             n_train_samples=len(train_data_loader.dataset),
             n_classes=n_classes,
+            finetune_codebook=finetune_codebook,
             load_finetuned_codebook=False,
+            device=gpu_device_idx,
         )
         exp_name = "fullembed-maskgit"
+        exp_name += "-finetuned" if finetune_codebook else ""
     else:
         train_exp = ExpMaskGIT(
             input_length, config, len(train_data_loader.dataset), n_classes
@@ -107,10 +112,9 @@ def train_maskgit(
         id=config["dataset"]["dataset_name"],
     )
     # Save codebook if it is finetuned
-    finetuned_codebook = config["MaskGIT"]["finetune_codebook"]
-    if finetuned_codebook:
-        save_model(
-            {model_filename(config, "vqmodel-finetuned"): train_exp.maskgit.vq_model},
+    if finetune_codebook and full_embed:
+        save_codebook(
+            {model_filename(config, "finetuned_codebook"): train_exp.maskgit.cb_stage1},
             id=config["dataset"]["dataset_name"],
         )
 
@@ -134,7 +138,9 @@ def train_maskgit(
             input_length,
             n_classes,
             "unconditional",
-            load_finetuned_codebook=finetuned_codebook,
+            device=gpu_device_idx,
+            load_finetuned_codebook=finetune_codebook,
+            # Load the finetuned codebook
         )
     else:
         x_gen = evaluation.sampleMaskGit(

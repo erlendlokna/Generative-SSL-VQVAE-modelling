@@ -113,6 +113,8 @@ if __name__ == "__main__":
             do_validate=True,
             gpu_device_idx=args.gpu_device_idx,
             torch_seed=0,
+            finetune_codebook=False,
+            full_embed=True,
         )
     else:
         raise ValueError(

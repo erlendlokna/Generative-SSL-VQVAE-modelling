@@ -54,6 +54,7 @@ INCLUDE_DECORRELATION = False
 def generate_experiments():
     experiments = []
     orhogonal_reg_weights = [0, 10] if INCLUDE_DECORRELATION else [0]
+    finetunes = [False, True]
 
     if RUN_STAGE1:
         experiments += [
@@ -61,14 +62,14 @@ def generate_experiments():
                 "stage": 1,
                 "ssl_method": ssl_method,
                 "augmented_data": (ssl_method != ""),
-                "orthogonal_reg_weight": ortho_reg,
+                "orthogonal_reg_weight": 0,  # ortho_reg,
                 "project_name": STAGE1_PROJECT_NAME,
                 "epochs": STAGE1_EPOCHS,
                 "train_fn": train_vqvae if ssl_method == "" else train_ssl_vqvae,
                 "full_embed": False,
                 "finetune_codebook": False,
             }
-            for ortho_reg in orhogonal_reg_weights
+            # for ortho_reg in orhogonal_reg_weights
             for ssl_method in SSL_METHODS
         ]
 
@@ -78,14 +79,15 @@ def generate_experiments():
                 "stage": 2,
                 "ssl_method": ssl_method,
                 "augmented_data": False,
-                "orthogonal_reg_weight": ortho_reg,
+                "orthogonal_reg_weight": 0,  # ortho_reg,
                 "project_name": STAGE2_PROJECT_NAME,
                 "epochs": STAGE2_EPOCHS,
                 "train_fn": train_maskgit,
-                "full_embed": (ssl_method != ""),
-                "finetune_codebook": (ssl_method != "" and FINETUNE_CODEBOOK),
+                "full_embed": True,  # (ssl_method != ""),
+                "finetune_codebook": finetune,
             }
-            for ortho_reg in orhogonal_reg_weights
+            for finetune in finetunes
+            # for ortho_reg in orhogonal_reg_weights
             for ssl_method in SSL_METHODS
         ]
     return experiments
@@ -159,14 +161,11 @@ def run_experiments():
             # Only configure stage 1 method:
             c["SSL"][f"stage1_method"] = experiment["ssl_method"]
             c["VQVAE"]["orthogonal_reg_weight"] = experiment["orthogonal_reg_weight"]
-            c["MaskGIT"]["finetune_codebook"] = experiment[
-                "finetune_codebook"
-            ]  # only for stage 2 using full embed
 
             for run in range(NUM_RUNS_PER):
                 # Wandb run name:
                 run_name = experiment_name(experiment, SEED, c["ID"])
-
+                run_name += "finetune" if experiment["finetune_codebook"] else ""
                 # Set correct data loader
                 if experiment["stage"] == 1:
                     train_data_loader = (
@@ -177,6 +176,7 @@ def run_experiments():
                 else:
                     train_data_loader = train_data_loader_stage2
 
+                # experiment trainer:
                 experiment["train_fn"](
                     # Stage 1 and 2
                     config=c,
@@ -188,7 +188,8 @@ def run_experiments():
                     wandb_project_name=experiment["project_name"],
                     torch_seed=SEED,
                     # Stage 2:
-                    full_embed=experiment["full_embed"],  # for stage 2
+                    full_embed=experiment["full_embed"],
+                    finetune_codebook=experiment["finetune_codebook"],
                 )
 
 

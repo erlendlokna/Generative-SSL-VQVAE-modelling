@@ -120,7 +120,9 @@ def model_filename(config, model_type):
         "vqmodel",
         "maskgit",
         "fullembed-maskgit",
+        "fullembed-maskgit-finetuned",
         "vqmodel-finetuned",
+        "finetuned_codebook",
     }
 
     assert model_type in model_types, "Non valid model type"
@@ -177,6 +179,39 @@ def save_model(models_dict: dict, dirname="saved_models", id: str = ""):
             torch.save(
                 model.state_dict(),
                 get_root_dir().joinpath(dirname, model_name + id_ + ".ckpt"),
+            )
+
+
+def save_codebook(codebook_dict: dict, dirname="saved_models", id: str = ""):
+    """
+    :param codebook_dict: {'codebook_name': tensor, ...}
+    """
+    try:
+        if not os.path.isdir(get_root_dir().joinpath(dirname)):
+            os.mkdir(get_root_dir().joinpath(dirname))
+
+        id_ = id[:]
+        if id != "":
+            id_ = "-" + id_
+        for codebook_name, tensor in codebook_dict.items():
+            torch.save(
+                tensor,
+                get_root_dir().joinpath(dirname, codebook_name + id_ + ".ckpt"),
+            )
+    except PermissionError:
+        # dirname = tempfile.mkdtemp()
+        dirname = tempfile.gettempdir()
+        print(
+            f"\nThe codebook is saved in the following temporary dirname due to some permission error: {dirname}.\n"
+        )
+
+        id_ = id[:]
+        if id != "":
+            id_ = "-" + id_
+        for codebook_name, tensor in codebook_dict.items():
+            torch.save(
+                tensor,
+                get_root_dir().joinpath(dirname, codebook_name + id_ + ".ckpt"),
             )
 
 

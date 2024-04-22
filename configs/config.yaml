@@ -1,5 +1,5 @@
 seed: 0
-ID: 000000
+ID: "000000"
 
 dataset:
   dataset_name: "TwoPatterns"
@@ -20,7 +20,7 @@ trainer_params:
     - 0
   max_epochs:
     stage1: 10
-    stage2: 100 #1000 #1000 #10000
+    stage2: 10 #1000 #1000 #10000
 
 encoder:
   dim: 64
@@ -61,13 +61,11 @@ MaskGIT:
     use_rmsnorm: True
     p_unconditional: 0.2
 
-  finetune_codebook: True #For full embedding MaskGIT
-
 class_guidance:
   guidance_scale: 1.
 
 SSL:
-  stage1_method: "" # "barlowtwins", "vicreg", "vibcreg" or empty
+  stage1_method: "vibcreg" # "barlowtwins", "vicreg", "vibcreg" or empty
   stage2_method: "" #"barlowtwins" "vicreg", "vibcreg"
 
   # Hyperparameters for SSL methods.

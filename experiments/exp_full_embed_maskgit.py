@@ -19,6 +19,8 @@ class ExpFullEmbedMaskGIT(ExpBase):
         config: dict,
         n_train_samples: int,
         n_classes: int,
+        device: torch.device,
+        finetune_codebook: bool = False,
         load_finetuned_codebook: bool = False,
     ):
         super().__init__()
@@ -28,7 +30,9 @@ class ExpFullEmbedMaskGIT(ExpBase):
             **config["MaskGIT"],
             config=config,
             n_classes=n_classes,
+            finetune_codebook=finetune_codebook,
             load_finetuned_codebook=load_finetuned_codebook,
+            device=device,
         )
         self.T_max = config["trainer_params"]["max_epochs"]["stage2"] * (
             np.ceil(n_train_samples / config["dataset"]["batch_sizes"]["stage2"]) + 1

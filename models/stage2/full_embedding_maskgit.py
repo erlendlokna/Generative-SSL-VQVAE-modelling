@@ -46,7 +46,9 @@ class Full_Embedding_MaskGIT(nn.Module):
         T: int,
         config: dict,
         n_classes: int,
+        finetune_codebook: bool,
         load_finetuned_codebook: bool,
+        device,
         **kwargs,
     ):
         super().__init__()
@@ -54,7 +56,6 @@ class Full_Embedding_MaskGIT(nn.Module):
         self.T = T
         self.config = config
         self.n_classes = n_classes
-        self.finetune_codebook = config["MaskGIT"]["finetune_codebook"]
 
         self.gamma = self.gamma_func("cosine")
         dataset_name = config["dataset"]["dataset_name"]
@@ -74,7 +75,7 @@ class Full_Embedding_MaskGIT(nn.Module):
         self.decoder = VQVAEDecoder(
             dim, 2 * in_channels, downsample_rate, config["decoder"]["n_resnet_blocks"]
         )
-        self.init_vq_model = VectorQuantize(
+        self.vq_model = VectorQuantize(
             dim, config["VQVAE"]["codebook"]["size"], **config["VQVAE"]
         )
         # load trained models for encoder, decoder, and vq_models
@@ -92,15 +93,13 @@ class Full_Embedding_MaskGIT(nn.Module):
             f"{model_filename(config, 'decoder')}-{dataset_name}.ckpt",
         )
         print(f"{ssl_method} decoder loaded")
-
-        vq_model_name = "vqmodel-finetuned" if load_finetuned_codebook else "vqmodel"
         self.load(
-            self.init_vq_model,
+            self.vq_model,
             get_root_dir().joinpath("saved_models"),
-            f"{model_filename(config, vq_model_name)}-{dataset_name}.ckpt",
+            f"{model_filename(config, 'vqmodel')}-{dataset_name}.ckpt",
         )
 
-        print(f"{ssl_method} {vq_model_name} loaded")
+        print(f"{ssl_method} vqmodel loaded")
 
         # freeze the models for encoder, decoder
         freeze(self.encoder)
@@ -110,14 +109,30 @@ class Full_Embedding_MaskGIT(nn.Module):
         self.encoder.eval()
         self.decoder.eval()
 
+        # vq
+        freeze(self.vq_model)
+        self.vq_model.eval()
+
+        # copy the codebook weights
+        self.cb_stage1 = copy.deepcopy(self.vq_model.codebook).to(device)  # (k, d)
+
+        # load the finetuned codebook weights
+        if load_finetuned_codebook:
+            self.load_codebook(
+                self.cb_stage1,
+                get_root_dir().joinpath("saved_models"),
+                f"{model_filename(config, 'finetuned_codebook')}-{dataset_name}.ckpt",
+            )
+            # After loading, ensure the device is set correctly
+            self.cb_stage1 = self.cb_stage1.to(device)
+            print(f"finetuned codebook loaded")
+
+        self.finetune_codebook = finetune_codebook
+
         if self.finetune_codebook:
-            # copy the vq
-            self.vq_model = copy.deepcopy(self.init_vq_model)
-            freeze(self.init_vq_model)
+            self.cb_stage1.requires_grad = True  # I think it's also an option to set a different learning rate for `cb_stage1`. (there's a way to do it, just some technical stuff.)
         else:
-            self.vq_model = self.init_vq_model
-            freeze(self.vq_model)
-            self.vq_model.eval()
+            self.cb_stage1.requires_grad = False
 
         # token lengths
         self.num_tokens = self.encoder.num_tokens.item()
@@ -157,6 +172,19 @@ class Full_Embedding_MaskGIT(nn.Module):
             dirname = Path(tempfile.gettempdir())
             model.load_state_dict(torch.load(dirname.joinpath(fname)))
 
+    def load_codebook(self, tensor, dirname, fname):
+        """
+        tensor: tensor object
+        dirname: directory where the tensor is saved
+        fname: filename of the saved tensor
+        """
+        try:
+            tensor = torch.load(dirname.joinpath(fname))
+        except FileNotFoundError:
+            dirname = Path(tempfile.gettempdir())
+            tensor = torch.load(dirname.joinpath(fname))
+        return tensor
+
     @torch.no_grad()
     def encode_to_z_q(self, x, encoder: VQVAEEncoder, vq_model: VectorQuantize):
         """
@@ -177,9 +205,10 @@ class Full_Embedding_MaskGIT(nn.Module):
         straight from [https://github.com/dome272/MaskGIT-pytorch/blob/main/transformer.py]
         """
         device = x.device
-        z_q, s = self.encode_to_z_q(x, self.encoder, self.vq_model)  # (b n)
+        _, s = self.encode_to_z_q(x, self.encoder, self.vq_model)  # s: (b n)
 
-        z_q = rearrange(z_q, "b c h w -> b (h w) c")  # (b, h*w, c)
+        # s -> zq
+        z_q = F.embedding(s, self.cb_stage1)  # (b n d) = (b h*w d)
 
         # randomly sample `t`
         t = np.random.uniform(0, 1)
@@ -282,7 +311,9 @@ class Full_Embedding_MaskGIT(nn.Module):
 
         for t in range(self.T):
 
-            z_q = self.s_to_z_q(s, self.vq_model, self.mask_token_ids, self.mask_emb)
+            z_q = self.s_to_z_q(
+                s, self.cb_stage1.to(s.device), self.mask_token_ids, self.mask_emb
+            )
 
             logits = self.transformer(
                 z_q, class_condition=class_condition
@@ -365,14 +396,13 @@ class Full_Embedding_MaskGIT(nn.Module):
         return s
 
     @torch.no_grad()
-    def s_to_z_q(self, s, vq_model, mask_token_ids, mask_emb):
+    def s_to_z_q(self, s, codebook, mask_token_ids, mask_emb):
         # s: (b, n) containing masked tokens
         # z_q : (b, n, d)
         unmasked_map = ~(s == mask_token_ids)  # b n
-        unmasked_s = s[unmasked_map].reshape(s.shape[0], -1)  # b n_unmasked
-        unmasked_z_q = vq_model.project_out(
-            F.embedding(unmasked_s, vq_model._codebook.embed)
-        )  # b n_unmasked d. Unmasked z_q's
+        unmasked_s = s[unmasked_map].reshape(s.shape[0], -1)  # (b n_unmasked)
+
+        unmasked_z_q = F.embedding(unmasked_s, codebook)  # (b, n_unmasked, d)
 
         # Create a tensor filled with mask_emb
         z_q = mask_emb.repeat(s.shape[0], s.shape[1], 1)
@@ -381,7 +411,7 @@ class Full_Embedding_MaskGIT(nn.Module):
         unmasked_map = unmasked_map.view(-1)
         unmasked_z_q = unmasked_z_q.view(-1, unmasked_z_q.shape[-1])
 
-        # Replace the unmasked locations in z_q with unmasked_z_q
+        # Place unmasked z_q's in the unmasked locations where s has mask_token_ds
         z_q.view(-1, z_q.shape[-1])[unmasked_map] = unmasked_z_q
 
         # print(torch.sum(z_q == mask_emb, dim=1)
