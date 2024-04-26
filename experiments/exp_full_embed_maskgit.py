@@ -107,6 +107,8 @@ class ExpFullEmbedMaskGIT(ExpBase):
             "prior_loss": prior_loss,
         }
 
+        wandb.log({"val_prior_loss": prior_loss})
+
         detach_the_unnecessary(loss_hist)
         return loss_hist
 

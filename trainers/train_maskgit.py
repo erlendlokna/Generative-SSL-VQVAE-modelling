@@ -142,6 +142,13 @@ def train_maskgit(
             load_finetuned_codebook=finetune_codebook,
             # Load the finetuned codebook
         )
+
+        # log codebook change pca:
+        if finetune_codebook:
+            evaluation.log_pca_codebook_change(
+                train_exp.maskgit.vq_model.codebook.cpu().detach().numpy(),
+                train_exp.maskgit.cb_stage1.cpu().detach().numpy(),
+            )
     else:
         x_gen = evaluation.sampleMaskGit(
             max(

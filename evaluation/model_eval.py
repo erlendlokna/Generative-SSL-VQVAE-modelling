@@ -372,6 +372,24 @@ class Evaluation(object):
             aggregated_sel_entropy,
         )
 
+    def log_pca_codebook_change(self, codebook_stage1, codebook_stage2):
+        pca = PCA(n_components=2)
+        pca.fit(codebook_stage1)
+        codebook_stage1_pca = pca.transform(codebook_stage1)
+        codebook_stage2_pca = pca.transform(codebook_stage2)
+
+        plt.figure(figsize=(4, 4))
+        plt.title("PCA of codebooks")
+        plt.scatter(
+            codebook_stage1_pca[:, 0], codebook_stage1_pca[:, 1], label="stage1"
+        )
+        plt.scatter(
+            codebook_stage2_pca[:, 0], codebook_stage2_pca[:, 1], label="stage2"
+        )
+        plt.legend()
+        plt.tight_layout()
+        wandb.log({"PCA-codebook_change": wandb.Image(plt)})
+
     def log_conditional_probability_vs_t(self, agg_probs):
         a, b, c = agg_probs.shape
         flat_agg_probs = agg_probs.permute(1, 0, 2).reshape(b, a * c)
