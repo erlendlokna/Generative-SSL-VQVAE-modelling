@@ -8,6 +8,10 @@ import numpy as np
 from typing import Union, Tuple, List, Optional
 from torch import Tensor
 
+"""
+Implementation by Daesoo Lee.
+"""
+
 
 def batch_dim_wise_normalize(z):
     """batch dim.-wise normalization (standard-scaling style)"""

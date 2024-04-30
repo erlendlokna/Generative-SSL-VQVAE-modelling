@@ -25,10 +25,9 @@ UCR_SUBSET = [
     # "Wafer",
     # "ECG5000",
     # "TwoPatterns",
-    "FordA",
+    # "FordA",
     "UWaveGestureLibraryAll",
     "FordB",
-    "ChlorineConcentration",
     "ShapesAll",
 ]
 # NUmber of runs per experiment
@@ -37,7 +36,7 @@ NUM_RUNS_PER = 1  # Will overwrite models in saved_models. Recomennded to set to
 RUN_STAGE1 = True
 RUN_STAGE2 = True
 
-SEED = 1
+SEEDS = [3]
 
 # Epochs:
 STAGE1_EPOCHS = 1000
@@ -129,9 +128,9 @@ def build_data_pipelines(config):
 
 
 # Main experiment function
-def run_experiments():
+def run_experiments(seed):
     # Set manual seed
-    torch.manual_seed(SEED)
+    torch.manual_seed(seed)
     # load config
     config_dir = get_root_dir().joinpath("configs", "config.yaml")
     config = load_yaml_param_settings(config_dir)
@@ -142,7 +141,7 @@ def run_experiments():
     c["trainer_params"]["max_epochs"]["stage2"] = STAGE2_EPOCHS
     c["augmentations"]["time_augs"] = STAGE1_AUGS
     c["VQVAE"]["aug_recon_rate"] = AUG_RECON_RATE
-    c["seed"] = SEED
+    c["seed"] = seed
     c["ID"] = generate_short_id(length=6)
     # all models in the experiment will use this id.
 
@@ -171,7 +170,7 @@ def run_experiments():
 
             for run in range(NUM_RUNS_PER):
                 # Wandb run name:
-                run_name = experiment_name(experiment, SEED, c["ID"])
+                run_name = experiment_name(experiment, seed, c["ID"])
                 run_name += "finetune" if experiment["finetune_codebook"] else ""
                 # Set correct data loader
                 if experiment["stage"] == 1:
@@ -193,7 +192,7 @@ def run_experiments():
                     gpu_device_idx=0,
                     wandb_run_name=f"{run_name}-{dataset}",
                     wandb_project_name=experiment["project_name"],
-                    torch_seed=SEED,
+                    torch_seed=seed,
                     # Stage 2 using SSL:
                     full_embed=experiment["full_embed"],
                     finetune_codebook=experiment["finetune_codebook"],
@@ -201,4 +200,5 @@ def run_experiments():
 
 
 if __name__ == "__main__":
-    run_experiments()
+    for seed in SEEDS:
+        run_experiments(seed)

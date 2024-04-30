@@ -7,6 +7,10 @@ import torch.nn.functional as F
 from torch import relu
 import numpy as np
 
+"""
+Most of the implementation is by Daesoo Lee.
+"""
+
 
 def batch_dim_wise_normalize(z):
     """batch dim.-wise normalization (standard-scaling style)"""
