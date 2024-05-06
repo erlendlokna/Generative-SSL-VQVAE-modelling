@@ -30,7 +30,9 @@ def train_FCN(
     config,
     config_cas,
     wandb_project,
+    wandb_run_name,
 ):
+
     # fit
     train_exp = ExpFCN(
         config_cas,

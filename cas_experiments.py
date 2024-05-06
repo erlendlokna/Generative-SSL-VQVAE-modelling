@@ -24,16 +24,16 @@ CAS_PROJECT_NAME = "Master-CAS-Run"
 
 # Datasets to run experiments on
 UCR_SUBSET = [
-    # "ElectricDevices",
-    # "StarLightCurves",
-    # "Wafer",
-    # "ECG5000",
+    "ElectricDevices",
+    "StarLightCurves",
+    "Wafer",
+    "ECG5000",
     "TwoPatterns",
-    # "FordA",
-    # "UWaveGestureLibraryAll",
-    # "FordB",
+    "FordA",
+    "UWaveGestureLibraryAll",
+    "FordB",
     # "ChlorineConcentration",
-    # "ShapesAll",
+    "ShapesAll",
 ]
 
 # Stage 1 SSL methods to run
@@ -44,7 +44,7 @@ SSL_METHODS = [
 ]  # empty string means regular VQVAE / no SSL
 
 
-SEEDS = [1]
+SEEDS = [1, 3, 4]
 
 
 def generate_experiments():
@@ -129,6 +129,9 @@ def run_cas_experiments(seed):
                 c["ID"] = id
 
                 synthetic_data_loader = build_data_pipelines(c, c_cas, synthetic=True)
+                method_name = f"{exp["ssl_method"]}-" if exp["ssl_method"] else ""
+                run_name = f"CAS-{method_name}seed{seed}-{c["ID"]}-{dataset}"
+
 
                 exp["train_fn"](
                     synthetic_data_loader,
@@ -137,6 +140,7 @@ def run_cas_experiments(seed):
                     c,
                     c_cas,
                     exp["project_name"],
+                    wandb_run_name = run_name,
                 )
 
 
