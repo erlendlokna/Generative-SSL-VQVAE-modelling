@@ -129,9 +129,8 @@ def run_cas_experiments(seed):
                 c["ID"] = id
 
                 synthetic_data_loader = build_data_pipelines(c, c_cas, synthetic=True)
-                method_name = f"{exp["ssl_method"]}-" if exp["ssl_method"] else ""
-                run_name = f"CAS-{method_name}seed{seed}-{c["ID"]}-{dataset}"
-
+                method_name = f"{exp['ssl_method']}-" if exp["ssl_method"] else ""
+                run_name = f"CAS-{method_name}seed{seed}-{c['ID']}-{dataset}"
 
                 exp["train_fn"](
                     synthetic_data_loader,
@@ -140,7 +139,7 @@ def run_cas_experiments(seed):
                     c,
                     c_cas,
                     exp["project_name"],
-                    wandb_run_name = run_name,
+                    wandb_run_name=run_name,
                 )
 
 
