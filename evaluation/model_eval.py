@@ -296,7 +296,11 @@ class Evaluation(object):
         plt.close()
 
     def log_tsne(
-        self, n_plot_samples: int, X_gen, z_test: np.ndarray, z_gen: np.ndarray
+        self,
+        n_plot_samples: int,
+        X_gen,
+        z_test: np.ndarray = None,
+        z_gen: np.ndarray = None,
     ):
         X_gen = X_gen.cpu().numpy()
 

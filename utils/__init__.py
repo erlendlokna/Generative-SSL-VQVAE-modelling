@@ -149,6 +149,43 @@ def model_filename(config, model_type):
     return "".join(part for part in filename_parts if part)
 
 
+def search_relevant_ids(config):
+
+    def is_relevant(model_name, dataset_name, seed, method):
+        parts = model_name.split("-")
+        # Get maskgits
+        relevant = "maskgit" in parts
+        print("maskgit relevance", relevant)
+        # print("init relevance", relevant)
+        # # dont include decorr
+        relevant &= "decorr" not in parts
+        print("decorr relevance", relevant)
+        # print("decorr relevance", relevant)
+
+        relevant &= dataset_name == parts[-1][:-5]  # len(.ckpt) = 5
+        print("dataset relevance", relevant)
+        # print("dataset relevance", relevant)
+        relevant &= seed == int(parts[-3])
+        print("seed relevance", relevant)
+        # print("seed relevance", relevant)
+
+        if method != "":
+            relevant &= method == parts[0]
+
+        return relevant
+
+    dataset_name = config["dataset"]["dataset_name"]
+    seed = config["seed"]
+    method = ""
+
+    ids = []
+    for model_name in os.listdir("saved_models"):
+        if is_relevant(model_name, dataset_name, seed, method):
+            ids.append(model_name.split("-")[-2])
+
+    return np.unique(ids)
+
+
 def save_model(models_dict: dict, dirname="saved_models", id: str = ""):
     """
     :param models_dict: {'model_name': model, ...}

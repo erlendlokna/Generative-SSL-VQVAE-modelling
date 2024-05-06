@@ -14,8 +14,9 @@ import torch
 import matplotlib.pyplot as plt
 
 from models.stage2.maskgit import MaskGIT
+from models.stage2.full_embedding_maskgit import Full_Embedding_MaskGIT
 from preprocessing.data_pipeline import build_data_pipeline
-from utils import get_root_dir, load_yaml_param_settings
+from utils import get_root_dir, load_yaml_param_settings, model_filename
 from tqdm import tqdm
 
 
@@ -152,7 +153,7 @@ def save_generated_samples(x_new: np.ndarray, save: bool, fname: str = None):
 
 
 class Sampler(object):
-    def __init__(self, real_train_data_loader, config, device):
+    def __init__(self, real_train_data_loader, config, device, ssl_stage1=False):
         self.config = config
         self.device = device
         self.guidance_scale = self.config["class_guidance"]["guidance_scale"]
@@ -161,16 +162,34 @@ class Sampler(object):
         # train_data_loader = build_data_pipeline(self.config, 'train')
         n_classes = len(np.unique(real_train_data_loader.dataset.Y))
         input_length = real_train_data_loader.dataset.X.shape[-1]
-        self.maskgit = MaskGIT(
-            input_length,
-            **self.config["MaskGIT"],
-            config=self.config,
-            n_classes=n_classes,
-        ).to(device)
+
+        if ssl_stage1:
+            self.maskgit = Full_Embedding_MaskGIT(
+                input_length,
+                **self.config["MaskGIT"],
+                config=self.config,
+                n_classes=n_classes,
+                finetune_codebook=False,
+                device=device,
+                load_finetuned_codebook=True,
+            ).to(device)
+            print("Full embedding MaskGIT sampler loaded..")
+        else:
+            self.maskgit = MaskGIT(
+                input_length,
+                **self.config["MaskGIT"],
+                config=self.config,
+                n_classes=n_classes,
+            ).to(device)
+            print("MaskGIT sampler loaded..")
 
         # load
         dataset_name = self.config["dataset"]["dataset_name"]
-        ckpt_fname = os.path.join("saved_models", f"maskgit-{dataset_name}.ckpt")
+        model_name = "fullembed-maskgit-finetuned" if ssl_stage1 else "maskgit"
+        ckpt_fname = os.path.join(
+            "saved_models",
+            f"{model_filename(self.config, model_name)}-{dataset_name}.ckpt",
+        )
         saved_state = torch.load(ckpt_fname)
         try:
             self.maskgit.load_state_dict(saved_state)

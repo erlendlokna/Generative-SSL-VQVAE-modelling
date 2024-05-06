@@ -28,14 +28,6 @@ filters = {
         "config.SSL.stage1_method": "barlowtwins",
         "config.VQVAE.orthogonal_reg_weight": 10,
     },
-    "byol": {
-        "config.SSL.stage1_method": "byol",
-        "config.VQVAE.orthogonal_reg_weight": 0,
-    },
-    "byol-decorr": {
-        "config.SSL.stage1_method": "byol",
-        "config.VQVAE.orthogonal_reg_weight": 10,
-    },
 }
 
 
@@ -227,13 +219,12 @@ datasets = [
     "FordA",
     "UWaveGestureLibraryAll",
     "FordB",
-    "ChlorineConcentration",
     "ShapesAll",
 ]
 
 if __name__ == "__main__":
-    wandb_stage1_proj = "Final-Stage1-Gaussian"
-    wandb_stage2_proj = "Final-Stage2-Gaussian"
+    wandb_stage1_proj = "S1-Master-Run"
+    wandb_stage2_proj = "S2-Master-Run"
 
     for dataset in datasets:
         # Stage 1
