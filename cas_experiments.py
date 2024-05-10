@@ -24,11 +24,11 @@ CAS_PROJECT_NAME = "Master-CAS-Run"
 
 # Datasets to run experiments on
 UCR_SUBSET = [
-    "ElectricDevices",
-    "StarLightCurves",
-    "Wafer",
-    "ECG5000",
-    "TwoPatterns",
+    # "ElectricDevices",
+    # "StarLightCurves",
+    # "Wafer",
+    # "ECG5000",
+    # "TwoPatterns",
     "FordA",
     "UWaveGestureLibraryAll",
     "FordB",
@@ -44,7 +44,7 @@ SSL_METHODS = [
 ]  # empty string means regular VQVAE / no SSL
 
 
-SEEDS = [1, 3, 4]
+SEEDS = [2]
 
 
 def generate_experiments():

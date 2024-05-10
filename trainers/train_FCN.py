@@ -43,7 +43,7 @@ def train_FCN(
     )
     wandb_logger = WandbLogger(
         project=wandb_project,
-        name=config["dataset"]["dataset_name"],
+        name=wandb_run_name,  # config["dataset"]["dataset_name"],
         config=config_cas | config,
     )
     trainer = pl.Trainer(
@@ -61,7 +61,7 @@ def train_FCN(
     )
 
     # test
-    trainer.test(train_exp, real_test_data_loader)
+    # trainer.test(train_exp, real_test_data_loader)
 
     # visual comp btn real and synthetic
     fig, axes = plt.subplots(2, 1, figsize=(4, 4))
