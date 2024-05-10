@@ -20,7 +20,9 @@ import matplotlib.pyplot as plt
 from preprocessing.preprocess_ucr import UCRDatasetImporter
 from preprocessing.data_pipeline import build_data_pipeline
 from utils import load_yaml_param_settings, get_root_dir
-from evaluation.cas import SyntheticDataset, ExpFCN
+from evaluation.cas import SyntheticDataset
+
+from experiments.exp_fcn import ExpFCN
 
 
 def train_FCN(

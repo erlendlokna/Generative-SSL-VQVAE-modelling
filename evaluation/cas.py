@@ -8,20 +8,6 @@ from supervised_FCN.experiments.exp_train import ExpFCN as ExpFCN_original
 from models.stage2.sample import Sampler
 
 
-class ExpFCN(ExpFCN_original):
-    def __init__(
-        self,
-        config_fcn: dict,
-        n_train_samples: int,
-        n_classes: int,
-    ):
-        super().__init__(config_fcn, n_train_samples, n_classes)
-        self.config = config_fcn
-        self.T_max = config_fcn["trainer_params"]["max_epochs"] * (
-            np.ceil(n_train_samples / config_fcn["dataset"]["batch_size"]) + 1
-        )
-
-
 class SyntheticDataset(Dataset):
     def __init__(
         self,
