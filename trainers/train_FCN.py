@@ -60,9 +60,6 @@ def train_FCN(
         val_dataloaders=real_test_data_loader,
     )
 
-    # test
-    # trainer.test(train_exp, real_test_data_loader)
-
     # visual comp btn real and synthetic
     fig, axes = plt.subplots(2, 1, figsize=(4, 4))
     axes = axes.flatten()
@@ -80,8 +77,7 @@ def train_FCN(
     axes[0].plot(X_train.T, alpha=0.1)
     axes[1].plot(X_gen.T, alpha=0.1)
     plt.tight_layout()
-    # wandb.log({"real vs synthetic": wandb.Image(plt)})
+    wandb.log({"real vs synthetic": wandb.Image(plt)})
 
     # finish wandb
-    # wandb.finish()
-    return train_exp, trainer
+    wandb.finish()
