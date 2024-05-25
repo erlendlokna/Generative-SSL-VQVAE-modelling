@@ -59,17 +59,20 @@ metrics_keys2 = [
     "IS_std",
 ]
 
+cas_metrics_keys = [
+    "val_acc_ema",
+]
 
 datasets = [
     "ElectricDevices",
-    # "FordB",
+    "FordB",
     "FordA",
     "Wafer",
     "TwoPatterns",
     "StarLightCurves",
     "UWaveGestureLibraryAll",
     "ECG5000",
-    # "ShapesAll",
+    "ShapesAll",
     "Mallat",
     "Symbols",
     "SonyAIBORobotSurface1",
@@ -141,14 +144,61 @@ def wandb_stage2_summary_to_csv(wandb_stage2_project, dataset, api=wandb.Api()):
     print(f"Summaries written to {root_dir}")
 
 
+def download_CAS_summaries(wandb_project, dataset, api=wandb.Api()):
+
+    for f in filters.values():
+        f["config.dataset.dataset_name"] = dataset
+
+    root_dir = f"results/{dataset}/cas"
+    os.makedirs(root_dir, exist_ok=True)
+
+    runs = api.runs(wandb_project)
+
+    # Initialize a list to hold all the summaries for all runs
+    cas_summaries = []
+
+    for key, filter in tqdm(filters.items()):
+        runs = api.runs(wandb_project, filters=filter)
+
+        # Initialize a list to hold all the summaries for all runs
+        all_summaries = []
+
+        for run in runs:
+            # For each run, capture the summary
+            summary = run.summary
+            row = {metric: summary.get(metric, None) for metric in cas_metrics_keys}
+            row["run_id"] = run.id  # Keep track of the run ID
+            all_summaries.append(row)
+
+        # Convert the accumulated summaries to a DataFrame
+        df_summaries = pd.DataFrame(all_summaries)
+
+        # Write the DataFrame to a CSV file
+        csv_path = os.path.join(root_dir, f"{key}_cas_summaries.csv")
+        df_summaries.to_csv(csv_path, index=False)
+
+    # Convert the accumulated summaries to a DataFrame
+    df_summaries = pd.DataFrame(cas_summaries)
+
+    # Write the DataFrame to a CSV file
+    csv_path = os.path.join(root_dir, f"summaries.csv")
+    df_summaries.to_csv(csv_path, index=False)
+
+    print(f"CAS summaries written to {root_dir}")
+
+
 if __name__ == "__main__":
     wandb_stage1_proj = "S1-Augs"
     wandb_stage2_proj = "S2-Augs"
 
     for dataset in datasets:
         # Stage 1
-        wandb_stage1_summary_to_csv(wandb_stage1_proj, dataset)
+        # wandb_stage1_summary_to_csv(wandb_stage1_proj, dataset)
 
         # Stage 2
-        wandb_stage2_summary_to_csv(wandb_stage2_proj, dataset)
+        # wandb_stage2_summary_to_csv(wandb_stage2_proj, dataset)
         # wandb_stage2_runs_to_csv(wandb_stage2_proj, dataset)
+
+        # CAS
+        cas_wandb = "CAS-Augs"
+        download_CAS_summaries(cas_wandb, dataset)
